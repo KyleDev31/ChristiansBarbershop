@@ -1,0 +1,1041 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { saveAs } from 'file-saver'
+import { db } from "@/lib/firebase"
+import { addDoc, collection } from "firebase/firestore"
+import { toast } from "@/hooks/use-toast"
+
+interface Service {
+  id: number;
+  name: string;
+  price: number;
+  duration: number;
+  category: string;
+  image: string;
+}
+
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+  stock: number;
+  image: string;
+}
+
+type Item = Service | Product;
+
+interface SalesReportRow {
+  'Transaction ID': string;
+  'Date': string;
+  'Customer': string;
+  'Items': string;
+  'Subtotal': string;
+  'Total': string;
+  'Payment Method': string;
+}
+
+interface ServiceReportRow {
+  'Service Name': string;
+  'Times Booked': number;
+  'Total Revenue': string;
+  'Average Revenue per Booking': string;
+}
+
+export default function POSPage() {
+  // Mock data for services
+  const services: Service[] = [
+    {
+      id: 1,
+      name: "Regular Haircut",
+      price: 150,
+      duration: 30,
+      category: "haircut",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 2,
+      name: "Beard Trim",
+      price: 100,
+      duration: 20,
+      category: "beard",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 3,
+      name: "Hair & Beard Combo",
+      price: 200,
+      duration: 45,
+      category: "combo",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 4,
+      name: "Kids Haircut",
+      price: 120,
+      duration: 25,
+      category: "haircut",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 5,
+      name: "Hair Coloring",
+      price: 350,
+      duration: 60,
+      category: "color",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 6,
+      name: "Facial",
+      price: 250,
+      duration: 30,
+      category: "facial",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 7,
+      name: "Hot Towel Shave",
+      price: 180,
+      duration: 35,
+      category: "beard",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 8,
+      name: "Head Massage",
+      price: 120,
+      duration: 20,
+      category: "addon",
+      image: "/placeholder.svg?height=100&width=100",
+    },
+  ]
+
+  // Mock data for products
+  const products = [
+    {
+      id: 101,
+      name: "Hair Wax",
+      price: 250,
+      category: "styling",
+      stock: 15,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 102,
+      name: "Beard Oil",
+      price: 350,
+      category: "beard",
+      stock: 8,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 103,
+      name: "Shampoo",
+      price: 280,
+      category: "hair",
+      stock: 3,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 104,
+      name: "Hair Spray",
+      price: 320,
+      category: "styling",
+      stock: 12,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 105,
+      name: "Razor Blades",
+      price: 150,
+      category: "tools",
+      stock: 2,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: 106,
+      name: "Aftershave",
+      price: 300,
+      category: "beard",
+      stock: 7,
+      image: "/placeholder.svg?height=100&width=100",
+    },
+  ]
+
+  // Mock data for customers
+  const customers = [
+    {
+      id: 1,
+      name: "John Doe",
+      phone: "+63 912 345 6789",
+      email: "john.doe@example.com",
+    },
+    {
+      id: 2,
+      name: "Alex Johnson",
+      phone: "+63 923 456 7890",
+      email: "alex.johnson@example.com",
+    },
+    {
+      id: 3,
+      name: "Michael Brown",
+      phone: "+63 934 567 8901",
+      email: "michael.brown@example.com",
+    },
+  ]
+
+  // State declarations
+  const [searchQuery, setSearchQuery] = useState("")
+  const [activeTab, setActiveTab] = useState("services")
+  const [cart, setCart] = useState<{id: number; name: string; price: number; quantity: number; type: string; image?: string; isSpecialRequest: boolean }[]>([])
+  const [customer, setCustomer] = useState<{ id: number; name: string; phone: string; email: string } | null>(null)
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false)
+  const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false)
+  const [isReceiptDialogOpen, setIsReceiptDialogOpen] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [receiptData, setReceiptData] = useState<{
+    id: string;
+    date: Date;
+    customer: { id: number; name: string; phone: string; email: string } | null;
+    items: { id: number; name: string; price: number; quantity: number; type: string; image?: string }[];
+    subtotal: number;
+    total: number;
+    paymentMethod: string;
+  } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [isSpecialRequestDialogOpen, setIsSpecialRequestDialogOpen] = useState(false)
+  const [specialRequest, setSpecialRequest] = useState("")
+  const [specialRequestPrice, setSpecialRequestPrice] = useState("")
+  const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false)
+  const [editingService, setEditingService] = useState<Partial<Service> | null>(null)
+  const [localServices, setLocalServices] = useState<Service[]>(services)
+  const [transactions, setTransactions] = useState<{
+    id: string;
+    date: Date;
+    customer: { id: number; name: string; phone: string; email: string } | null;
+    items: { id: number; name: string; price: number; quantity: number; type: string; image?: string }[];
+    subtotal: number;
+    total: number;
+    paymentMethod: string;
+  }[]>([])
+  const [cashAmount, setCashAmount] = useState("")
+
+  // Filter items based on search query and active tab
+  const filteredItems =
+    activeTab === "services"
+      ? localServices.filter(
+          (service) =>
+            service.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+            (activeTab === "services" || service.category === activeTab)
+        )
+      : products.filter(
+          (product) =>
+            product.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+            (activeTab === "products" || product.category === activeTab)
+        )
+
+  // Calculate cart totals
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const total = subtotal 
+
+  // Add item to cart
+  const addToCart = (item: { id: number; name: string; price: number; type?: string; image?: string }) => {
+    const existingItem = cart.find((cartItem) => cartItem.id === item.id && cartItem.type === activeTab)
+
+    if (existingItem) {
+      setCart(
+        cart.map((cartItem) =>
+          cartItem.id === item.id && cartItem.type === activeTab
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem,
+        ),
+      )
+    } else {
+      setCart([...cart, { ...item, quantity: 1, type: activeTab, isSpecialRequest: false }])
+    }
+  }
+
+  // Remove item from cart
+  const removeFromCart = (index:number) => {
+    setCart(cart.filter((_, i) => i !== index))
+  }
+
+  // Update item quantity
+  const updateQuantity = (index: number, newQuantity: number) => {
+    if (newQuantity < 1) return
+
+    const updatedCart = [...cart]
+    updatedCart[index].quantity = newQuantity
+    setCart(updatedCart)
+  }
+
+  // Handle payment
+  const handlePayment = async () => {
+    if (paymentMethod === "cash") {
+      const cash = parseFloat(cashAmount)
+      if (isNaN(cash) || cash < total) {
+        toast({
+          title: "Insufficient amount",
+          description: "The cash amount entered is less than the total."
+        })
+        return
+      }
+    }
+    // Generate receipt data
+    const receipt = {
+      id: `REC-${Date.now().toString().slice(-6)}`,
+      date: new Date(),
+      customer: customer,
+      items: cart,
+      subtotal: subtotal,
+      total: total,
+      paymentMethod: paymentMethod,
+    }
+
+    // Save to Firestore
+    try {
+      await saveSaleToFirestore({
+        transactionId: receipt.id,
+        date: receipt.date,
+        customer: receipt.customer,
+        items: receipt.items,
+        subtotal: receipt.subtotal,
+        total: receipt.total,
+        paymentMethod: receipt.paymentMethod,
+      })
+      toast({
+        title: "Sale recorded successfully!",
+        description: "The transaction has been saved to the sales database."
+      })
+    } catch (error) {
+      // Optionally, you could show an error toast here
+      console.error("Error saving sale to Firestore:", error)
+    }
+
+    // Add to transactions history
+    setTransactions([...transactions, receipt])
+    setIsPaymentDialogOpen(false)
+    setIsReceiptDialogOpen(true)
+    setReceiptData(receipt)
+    setCashAmount("")
+  }
+
+  // Handle new transaction
+  const handleNewTransaction = () => {
+    setCart([])
+    setCustomer(null)
+    setIsReceiptDialogOpen(false)
+    setReceiptData(null)
+  }
+
+  // Format currency
+  const formatCurrency = (amount:number) => {
+    return `₱${amount.toFixed(2)}`
+  }
+
+  // Add special request to cart
+  const addSpecialRequest = () => {
+    if (!specialRequest.trim()) return
+
+    const newItem = {
+      id: Date.now(),
+      name: `Special Request: ${specialRequest}`,
+      price: Number(specialRequestPrice) || 0,
+      quantity: 1,
+      type: "special",
+      isSpecialRequest: true
+    }
+
+    setCart([...cart, newItem])
+    setSpecialRequest("")
+    setSpecialRequestPrice("")
+    setIsSpecialRequestDialogOpen(false)
+  }
+
+  // Add or edit service
+  const handleServiceSubmit = () => {
+    if (!editingService?.name || !editingService?.price) return
+
+    if (editingService.id) {
+      // Edit existing service
+      setLocalServices(localServices.map(service => 
+        service.id === editingService.id ? { ...service, ...editingService } as Service : service
+      ))
+    } else {
+      // Add new service
+      const newService: Service = {
+        id: Date.now(),
+        name: editingService.name,
+        price: editingService.price,
+        duration: editingService.duration || 30, // Default duration
+        category: editingService.category || "haircut",
+        image: editingService.image || "/placeholder.svg?height=100&width=100",
+      }
+      setLocalServices([...localServices, newService])
+    }
+
+    setEditingService(null)
+    setIsServiceDialogOpen(false)
+  }
+
+  // Delete service
+  const deleteService = (id: number) => {
+    setLocalServices(localServices.filter(service => service.id !== id))
+  }
+
+  // Open service dialog for editing
+  const editService = (service: Service) => {
+    setEditingService(service)
+    setIsServiceDialogOpen(true)
+  }
+
+  // Open service dialog for new service
+  const addNewService = () => {
+    setEditingService({
+      name: "",
+      price: 0,
+      duration: 30,
+      category: "haircut",
+      image: "/placeholder.svg?height=100&width=100",
+    })
+    setIsServiceDialogOpen(true)
+  }
+
+  // Update the card click handler to check type
+  const handleCardClick = (item: Item) => {
+    if ('duration' in item) {
+      // It's a service
+      addToCart(item)
+    } else {
+      // It's a product
+      addToCart(item)
+    }
+  }
+
+  // Export Sales Report
+  const exportSalesReport = () => {
+    try {
+      if (transactions.length === 0) {
+        alert('No transactions to export')
+        return
+      }
+
+      const salesData: SalesReportRow[] = transactions.map(transaction => ({
+        'Transaction ID': transaction.id,
+        'Date': new Date(transaction.date).toLocaleString(),
+        'Customer': transaction.customer?.name || 'Walk-in',
+        'Items': transaction.items.map(item => `${item.name} (${item.quantity})`).join(', '),
+        'Subtotal': `₱${transaction.subtotal.toFixed(2)}`,
+        'Total': `₱${transaction.total.toFixed(2)}`,
+        'Payment Method': transaction.paymentMethod,
+      }))
+
+      // Convert data to CSV
+      const headers = Object.keys(salesData[0]) as (keyof SalesReportRow)[]
+      const csvRows = [
+        headers.join(','),
+        ...salesData.map(row => 
+          headers.map(header => {
+            const value = row[header]
+            return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
+          }).join(',')
+        )
+      ]
+      const csvContent = csvRows.join('\n')
+
+      // Create and save file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+      saveAs(blob, `sales_report_${new Date().toISOString().split('T')[0]}.csv`)
+    } catch (error) {
+      console.error('Error exporting sales report:', error)
+      alert('Failed to export sales report. Please try again.')
+    }
+  }
+
+  // Export Service Performance Report
+  const exportServiceReport = () => {
+    try {
+      if (transactions.length === 0) {
+        alert('No transactions to export')
+        return
+      }
+
+      // Calculate service statistics
+      const serviceStats = new Map<string, { count: number; revenue: number }>()
+      
+      transactions.forEach(transaction => {
+        transaction.items.forEach(item => {
+          if (item.type === 'services') {
+            const current = serviceStats.get(item.name) || { count: 0, revenue: 0 }
+            serviceStats.set(item.name, {
+              count: current.count + item.quantity,
+              revenue: current.revenue + (item.price * item.quantity)
+            })
+          }
+        })
+      })
+
+      if (serviceStats.size === 0) {
+        alert('No service data to export')
+        return
+      }
+
+      const serviceData: ServiceReportRow[] = Array.from(serviceStats.entries()).map(([name, stats]) => ({
+        'Service Name': name,
+        'Times Booked': stats.count,
+        'Total Revenue': `₱${stats.revenue.toFixed(2)}`,
+        'Average Revenue per Booking': `₱${(stats.revenue / stats.count).toFixed(2)}`
+      }))
+
+      // Convert data to CSV
+      const headers = Object.keys(serviceData[0]) as (keyof ServiceReportRow)[]
+      const csvRows = [
+        headers.join(','),
+        ...serviceData.map(row => 
+          headers.map(header => {
+            const value = row[header]
+            return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
+          }).join(',')
+        )
+      ]
+      const csvContent = csvRows.join('\n')
+
+      // Create and save file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
+      saveAs(blob, `service_performance_${new Date().toISOString().split('T')[0]}.csv`)
+    } catch (error) {
+      console.error('Error exporting service report:', error)
+      alert('Failed to export service report. Please try again.')
+    }
+  }
+
+  const saveSaleToFirestore = async (saleData: any) => {
+    try {
+      await addDoc(collection(db, "sales"), saleData)
+    } catch (error) {
+      console.error("Error saving sale to Firestore:", error)
+    }
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    const timer = setTimeout(() => setLoading(false), 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-6" />
+        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Products/Services Skeleton */}
+          <div className="lg:col-span-2">
+            <Skeleton className="h-12 w-1/2 mb-4" />
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="h-40 w-full" />
+              ))}
+            </div>
+          </div>
+          {/* Cart Skeleton */}
+          <div className="lg:col-span-1 flex flex-col h-full">
+            <Skeleton className="h-12 w-1/2 mb-4" />
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+            <Skeleton className="h-24 w-full mt-4" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto py-6 px-4 max-w-[1920px]">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <h1 className="text-3xl font-bold">Point of Sale</h1>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setCart([])} className="flex-1 md:flex-none">
+            <Trash className="h-4 w-4 mr-2" />
+            Clear Cart
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Products/Services Section */}
+        <div className="lg:col-span-8">
+          <Card className="h-full">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <CardTitle>Products & Services</CardTitle>
+                  <CardDescription>Add items to the current transaction</CardDescription>
+                </div>
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search items..."
+                    className="pl-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-9 w-9"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">Clear search</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="services" value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="mb-6">
+                  <TabsTrigger value="services">Services</TabsTrigger>
+                  <TabsTrigger value="products">Products</TabsTrigger>
+                </TabsList>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {filteredItems.map((item) => (
+                    <Card
+                      key={item.id}
+                      className="cursor-pointer hover:border-primary transition-colors group"
+                      onClick={() => handleCardClick(item)}
+                    >
+                      <div className="aspect-square relative">
+                        <img
+                          src={item.image || "/placeholder.svg"}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {'duration' in item && (
+                            <>
+                              <Button
+                                variant="secondary"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  editService(item as Service)
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteService(item.id)
+                                }}
+                              >
+                                <Trash className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <CardContent className="p-3">
+                        <div className="font-medium truncate">{item.name}</div>
+                        <div className="flex justify-between items-center mt-1">
+                          <span className="font-bold">{formatCurrency(item.price)}</span>
+                          {activeTab !== "services" && "stock" in item && (
+                            <span
+                              className={`text-xs ${
+                                item.stock <= 5 ? "text-red-500" : "text-green-500"
+                              }`}
+                            >
+                              {`${item.stock} in stock`}
+                            </span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Cart Section */}
+        <div className="lg:col-span-4">
+          <Card className="h-full flex flex-col sticky top-6">
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Current Sale</CardTitle>
+                  <CardDescription>
+                    {cart.length} {cart.length === 1 ? "item" : "items"} in cart
+                  </CardDescription>
+                </div>
+                <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent className="flex-grow overflow-auto">
+              {cart.length > 0 ? (
+                <div className="space-y-4">
+                  {cart.map((item, index) => (
+                    <div key={index} className="flex items-center justify-between border-b pb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
+                          <img
+                            src={item.image || "/placeholder.svg"}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{item.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {formatCurrency(item.price)} × {item.quantity}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center border rounded-md">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-none"
+                            onClick={() => updateQuantity(index, item.quantity - 1)}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="w-8 text-center">{item.quantity}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-none"
+                            onClick={() => updateQuantity(index, item.quantity + 1)}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500"
+                          onClick={() => removeFromCart(index)}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full py-8">
+                  <ShoppingCart className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground text-center">
+                    Your cart is empty. Add products or services to begin.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="flex-shrink-0 border-t pt-4">
+              <div className="w-full space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total</span>
+                    <span>{formatCurrency(total)}</span>
+                  </div>
+                </div>
+                <Button 
+                  disabled={cart.length === 0} 
+                  onClick={() => setIsPaymentDialogOpen(true)}
+                  className="w-full"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Payment
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+
+      {/* Customer Selection Dialog */}
+
+      {/* Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={open => { setIsPaymentDialogOpen(open); if (!open) setCashAmount("") }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Payment</DialogTitle>
+            <DialogDescription>Complete the transaction.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-md">
+                <div className="flex justify-between mb-2">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(subtotal)}</span>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex justify-between font-bold">
+                  <span>Total</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="payment-method">Payment Method</Label>
+                <Select defaultValue="cash" onValueChange={setPaymentMethod}>
+                  <SelectTrigger id="payment-method">
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="gcash">GCash</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {paymentMethod === "cash" && (
+                <div className="space-y-2">
+                  <Label htmlFor="cash-amount">Cash Amount</Label>
+                  <Input
+                    id="cash-amount"
+                    type="number"
+                    placeholder="Enter amount received"
+                    value={cashAmount}
+                    onChange={e => setCashAmount(e.target.value)}
+                    min={total}
+                  />
+                </div>
+              )}
+
+              
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handlePayment}>Complete Payment</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Dialog */}
+      <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Receipt</span>
+              <Receipt className="h-5 w-5" />
+            </DialogTitle>
+            <DialogDescription>Transaction completed successfully.</DialogDescription>
+          </DialogHeader>
+          {receiptData && (
+            <div className="py-4">
+              <div className="text-center mb-4">
+                <h3 className="font-bold text-lg">Christian's Barbershop</h3>
+                <p className="text-sm text-muted-foreground">Poblacion, Nabunturan, Davao de Oro</p>
+                <p className="text-sm text-muted-foreground">Tel: (123) 456-7890</p>
+              </div>
+
+              <div className="flex justify-between text-sm mb-4">
+                <span>Receipt #: {receiptData.id}</span>
+                <span>{new Date(receiptData.date).toLocaleString()}</span>
+              </div>
+
+              {receiptData.customer && (
+                <div className="mb-4 text-sm">
+                  <p>
+                    <span className="font-medium">Customer:</span> {receiptData.customer.name}
+                  </p>
+                  <p>
+                    <span className="font-medium">Phone:</span> {receiptData.customer.phone}
+                  </p>
+                </div>
+              )}
+
+              <Separator className="my-2" />
+
+              <div className="space-y-2 mb-4">
+                {receiptData.items.map((item, index) => (
+                  <div key={index} className="flex justify-between text-sm">
+                    <span>
+                      {item.name} × {item.quantity}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({item.type === "services" ? "Service" : "Product"})
+                      </span>
+                    </span>
+                    <span>{formatCurrency(item.price * item.quantity)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <Separator className="my-2" />
+
+              <div className="space-y-1 mb-4">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(receiptData.subtotal)}</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Total</span>
+                  <span>{formatCurrency(receiptData.total)}</span>
+                </div>
+              </div>
+
+              <div className="text-sm mb-4">
+                <p>
+                  <span className="font-medium">Payment Method:</span>{" "}
+                  {receiptData.paymentMethod.charAt(0).toUpperCase() + receiptData.paymentMethod.slice(1)}
+                </p>
+              </div>
+
+              <div className="text-center text-sm text-muted-foreground mt-6">
+                <p>Thank you for your business!</p>
+                <p>Please come again.</p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={handleNewTransaction} className="w-full">
+              New Transaction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Special Request Dialog */}
+      <Dialog open={isSpecialRequestDialogOpen} onOpenChange={setIsSpecialRequestDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add Special Request</DialogTitle>
+            <DialogDescription>
+              Add any special requests or custom services for the client.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="special-request">Special Request</Label>
+              <Input
+                id="special-request"
+                placeholder="Enter special request details..."
+                value={specialRequest}
+                onChange={(e) => setSpecialRequest(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="special-price">Additional Price (₱)</Label>
+              <Input
+                id="special-price"
+                type="number"
+                placeholder="Enter additional price..."
+                value={specialRequestPrice}
+                onChange={(e) => setSpecialRequestPrice(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSpecialRequestDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={addSpecialRequest} disabled={!specialRequest.trim()}>
+              Add Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Service Management Dialog */}
+      <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{editingService?.id ? "Edit Service" : "Add New Service"}</DialogTitle>
+            <DialogDescription>
+              {editingService?.id ? "Modify the service details below." : "Enter the details for the new service."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="service-name">Service Name</Label>
+              <Input
+                id="service-name"
+                value={editingService?.name || ""}
+                onChange={(e) => setEditingService(prev => prev ? { ...prev, name: e.target.value } : null)}
+                placeholder="Enter service name..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="service-price">Price (₱)</Label>
+              <Input
+                id="service-price"
+                type="number"
+                value={editingService?.price || ""}
+                onChange={(e) => setEditingService(prev => prev ? { ...prev, price: Number(e.target.value) } : null)}
+                placeholder="Enter service price..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="service-category">Category</Label>
+              <Select
+                value={editingService?.category || "haircut"}
+                onValueChange={(value) => setEditingService(prev => prev ? { ...prev, category: value } : null)}
+              >
+                <SelectTrigger id="service-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="haircut">Haircut</SelectItem>
+                  <SelectItem value="beard">Beard</SelectItem>
+                  <SelectItem value="combo">Combo</SelectItem>
+                  <SelectItem value="color">Color</SelectItem>
+                  <SelectItem value="facial">Facial</SelectItem>
+                  <SelectItem value="addon">Add-on</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsServiceDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleServiceSubmit} disabled={!editingService?.name || !editingService?.price}>
+              {editingService?.id ? "Save Changes" : "Add Service"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
