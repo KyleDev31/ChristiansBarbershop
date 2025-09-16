@@ -37,6 +37,20 @@ export async function POST(req: NextRequest) {
     }
   })
 
+  // compute total sales for the selected date range
+  const totalSales = sales.reduce((sum, s) => {
+    const val = typeof s.total === 'number' ? s.total : parseFloat(s.total || '0')
+    return sum + (isNaN(val) ? 0 : val)
+  }, 0)
+
+  // Summary Sheet
+  const summarySheet = workbook.addWorksheet("Summary")
+  summarySheet.addRow(["Report Range", `${from.toDateString()} - ${to.toDateString()}`])
+  summarySheet.addRow([])
+  summarySheet.addRow(["Total Sales", totalSales])
+  summarySheet.addRow(["Total Transactions (sales records)", sales.length])
+  summarySheet.addRow(["Total Appointments in range", appts.length])
+
   // Services Sheet - aggregate from sales
   const serviceSheet = workbook.addWorksheet("Services")
   serviceSheet.addRow(["Service Name", "Value"])

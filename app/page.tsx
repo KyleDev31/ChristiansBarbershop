@@ -260,8 +260,8 @@ export default function HomePage() {
             </div>
             <div className="mb-6">
               <h2 className="text-2xl font-bold mb-2">Find Us</h2>
-              <p className="text-muted-foreground mb-1">123 Main Street, Nabunturan, Davao de Oro</p>
-              <p className="text-muted-foreground">Open 8am to 5pm, Monday to Saturday</p>
+              <p className="text-muted-foreground mb-1">Purok 12 Poblacion, Nabunturan, Davao de Oro</p>
+              <p className="text-muted-foreground">Open 8am to 7pm, Monday to Saturday</p>
             </div>
             <div className="flex justify-center gap-4">
               <Button asChild size="sm" variant="outline">

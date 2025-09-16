@@ -987,8 +987,8 @@ export default function ReportsPage() {
                 <CardDescription>Per barber</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">28</div>
-                <p className="text-xs text-green-500">+5.2% from previous period</p>
+                <div className="text-3xl font-bold"></div>
+                <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
 

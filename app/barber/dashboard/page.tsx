@@ -44,25 +44,20 @@ type UserProfile = {
   bio?: string
   phone?: string
   skills?: string[]
-  availability?: { day: string; slots: string[] }[]
 }
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 export default function BarberDashboard() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile>({})
   const [loadingProfile, setLoadingProfile] = useState(true)
 
-  // Ensure availability is always treated as an array
-  const availability = Array.isArray(profile.availability) ? profile.availability : []
-
   const [queue, setQueue] = useState<Appointment[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [pastAppointments, setPastAppointments] = useState<Appointment[]>([])
+  const [historyOpen, setHistoryOpen] = useState(true)
+  const [historySort, setHistorySort] = useState<'newest' | 'oldest'>('newest')
 
   const [savingProfile, setSavingProfile] = useState(false)
-  const [savingAvailability, setSavingAvailability] = useState(false)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -322,51 +317,6 @@ export default function BarberDashboard() {
     }
   }, [user, profile])
 
-  const toggleDayAvailability = async (day: string) => {
-    if (!user) return
-    // coerce to array copy
-    const avail = Array.isArray(profile.availability) ? [...profile.availability] : []
-    const exists = avail.find((a) => a.day === day)
-    if (exists) {
-      const newAvail = avail.filter((a) => a.day !== day)
-      setProfile((p) => ({ ...p, availability: newAvail }))
-      await updateDoc(doc(db, "users", user.uid), { availability: newAvail })
-    } else {
-      const newAvail = [...avail, { day, slots: ["09:00", "10:00"] }]
-      setProfile((p) => ({ ...p, availability: newAvail }))
-      await updateDoc(doc(db, "users", user.uid), { availability: newAvail })
-    }
-  }
-
-  const addSlot = async (day: string, slot: string) => {
-    if (!user) return
-    const avail = Array.isArray(profile.availability) ? [...profile.availability] : []
-    const target = avail.find((a) => a.day === day)
-    if (!target) return
-    if (!target.slots.includes(slot)) {
-      // mutate the local copy safely
-      const updatedTarget = { ...target, slots: [...(target.slots || []), slot] }
-      const newAvail = avail.map((a) => (a.day === day ? updatedTarget : a))
-      setProfile((p) => ({ ...p, availability: newAvail }))
-      setSavingAvailability(true)
-      await updateDoc(doc(db, "users", user.uid), { availability: newAvail })
-      setSavingAvailability(false)
-    }
-  }
-
-  const removeSlot = async (day: string, slot: string) => {
-    if (!user) return
-    const avail = Array.isArray(profile.availability) ? [...profile.availability] : []
-    const target = avail.find((a) => a.day === day)
-    if (!target) return
-    const updatedTarget = { ...target, slots: (target.slots || []).filter((s) => s !== slot) }
-    const newAvail = avail.map((a) => (a.day === day ? updatedTarget : a))
-    setProfile((p) => ({ ...p, availability: newAvail }))
-    setSavingAvailability(true)
-    await updateDoc(doc(db, "users", user.uid), { availability: newAvail })
-    setSavingAvailability(false)
-  }
-
   const moveQueueItem = async (index: number, direction: "up" | "down") => {
     if (!user) return
     if (index < 0 || index >= queue.length) return
@@ -495,7 +445,7 @@ export default function BarberDashboard() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                   <h3 className="text-lg font-medium mb-1">Edit Profile</h3>
-                  <p className="text-sm text-muted-foreground">Update your barber profile and availability.</p>
+                  <p className="text-sm text-muted-foreground">Update your barber profile.</p>
                   </div>
                   <div>
                   <button
@@ -597,29 +547,7 @@ export default function BarberDashboard() {
                 </dialog>
               </div>
 
-            {/* Availability */}
-            <div className="bg-white rounded-lg border p-6 shadow-sm mt-6">
-              <h3 className="text-lg font-medium mb-3">Availability</h3>
-              <p className="text-sm text-muted-foreground mb-4">Select days you are available and manage time slots.</p>
-
-              <div className="grid grid-cols-4 gap-2">
-                {DAYS.map((d) => {
-                  const has = availability.some((a) => a.day === d)
-                  return (
-                    <button
-                      key={d}
-                      onClick={() => toggleDayAvailability(d)}
-                      className={`py-2 rounded ${has ? "bg-primary text-white" : "bg-gray-100 text-gray-700"}`}
-                    >
-                      {d}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <div className="mt-4 space-y-3">
-              </div>
-            </div>
+            {/* Availability section removed */}
           </div>
 
           {/* Right - Appointments & Queue */}
@@ -679,26 +607,59 @@ export default function BarberDashboard() {
 
 
             <div className="bg-white rounded-lg border p-6 shadow-sm">
-              <h3 className="text-lg font-medium mb-3">History</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-medium">History</h3>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-muted-foreground">Sort</label>
+                  <select
+                    value={historySort}
+                    onChange={(e) => setHistorySort(e.target.value as 'newest' | 'oldest')}
+                    className="border rounded px-2 py-1 text-sm"
+                  >
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                  </select>
+                  <button
+                    className="text-sm px-2 py-1 rounded bg-gray-100"
+                    onClick={() => setHistoryOpen((s) => !s)}
+                    aria-expanded={historyOpen}
+                  >
+                    {historyOpen ? 'Collapse' : 'Expand'}
+                  </button>
+                </div>
+              </div>
+
               {pastAppointments.length === 0 ? (
                 <div className="text-sm text-muted-foreground">No past appointments.</div>
               ) : (
-                <ul className="space-y-2">
-                  {pastAppointments.map((a) => (
-                    <li key={a.id} className="border rounded-3xl p-3 flex justify-between items-center bg-white shadow-sm">
-                      <div>
-                        <div className="text-sm text-muted-foreground">
-                          {a.raw?.email || a.raw?.customerEmail || a.raw?.emailAddress || (a.scheduledAt ? a.scheduledAt.toDate().toLocaleString() : "—")}
-                        </div>
-                        {/* show service availed below the email */}
-                        <div className="text-xs text-muted-foreground mt-1">Service: {a.serviceName || a.raw?.serviceName || "—"}</div>
-                      </div>
-                      <div className={`text-sm px-2 py-2 rounded ${a.status === 'completed' ? 'bg-green-500 text-white' : a.status === 'cancelled' ? 'bg-red-500 text-white' : ''}`}>
-                        {a.status}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                historyOpen && (
+                  <ul className="space-y-2">
+                    {([...(pastAppointments || [])]
+                      .sort((a, b) => {
+                        const da = getCompletedDate(a)?.getTime() || 0
+                        const db = getCompletedDate(b)?.getTime() || 0
+                        return historySort === 'newest' ? db - da : da - db
+                      })
+                      .map((a) => {
+                        const cd = getCompletedDate(a)
+                        return (
+                          <li key={a.id} className="border rounded-3xl p-3 flex justify-between items-center bg-white shadow-sm">
+                            <div>
+                              <div className="text-sm text-muted-foreground">
+                                {a.raw?.email || a.raw?.customerEmail || a.raw?.emailAddress || (cd ? formatDate(cd, 'PPP p') : '—')}
+                              </div>
+                              {/* show service availed below the email */}
+                              <div className="text-xs text-muted-foreground mt-1">Service: {a.serviceName || a.raw?.serviceName || '—'}</div>
+                              <div className="text-xs text-muted-foreground mt-1">Completed: {cd ? formatDate(cd, 'PPP p') : '—'}</div>
+                            </div>
+                            <div className={`text-sm px-2 py-2 rounded ${a.status === 'completed' ? 'bg-green-500 text-white' : a.status === 'cancelled' ? 'bg-red-500 text-white' : ''}`}>
+                              {a.status}
+                            </div>
+                          </li>
+                        )
+                      }))}
+                  </ul>
+                )
               )}
             </div>
           </div>
@@ -706,6 +667,49 @@ export default function BarberDashboard() {
       </div>
     </>
   )
+}
+
+/* helper: getCompletedDate - normalize various completedAt representations to a Date */
+function getCompletedDate(a: Appointment): Date | null {
+  if (!a) return null
+
+  // Try explicit completedAt fields on the appointment or raw payload
+  const candidates = [
+    (a as any).completedAt,
+    a.raw?.completedAt,
+    a.raw?.completed_at,
+    a.raw?.completedAtTimestamp,
+    a.raw?.completedAtDate,
+  ]
+
+  for (const c of candidates) {
+    if (!c) continue
+    // Firestore Timestamp
+    if (typeof c === "object" && typeof (c as any).toDate === "function") {
+      try {
+        return (c as any).toDate()
+      } catch (e) {
+        continue
+      }
+    }
+
+    // numeric (epoch ms) or string
+    if (typeof c === "number") {
+      const d = new Date(c)
+      if (!isNaN(d.getTime())) return d
+    }
+    if (typeof c === "string") {
+      const d = new Date(c)
+      if (!isNaN(d.getTime())) return d
+    }
+  }
+
+  // Fallback: if status is completed, use scheduledAt if available
+  if (a.status === "completed" && a.scheduledAt && typeof a.scheduledAt.toDate === "function") {
+    return a.scheduledAt.toDate()
+  }
+
+  return null
 }
 
 /* helper: add slot input */

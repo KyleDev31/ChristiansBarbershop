@@ -77,9 +77,9 @@ export function SiteFooter() {
           <div>
             <h3 className="font-medium mb-4 text-white">Contact</h3>
             <ul className="space-y-2">
-              <li className="text-muted-foreground">Poblacion Nabunturan, Davao de Oro</li>
-              <li className="text-muted-foreground">Phone: (123) 456-7890</li>
-              <li className="text-muted-foreground">Email: info@christiansbarbershop.com</li>
+              <li className="text-muted-foreground">Purok 12 Poblacion Nabunturan, Davao de Oro</li>
+              <li className="text-muted-foreground">Phone: 09500675739</li>
+              <li className="text-muted-foreground">Email: christiansbarbershop@gmail.com</li>
             </ul>
           </div>
         </div>
