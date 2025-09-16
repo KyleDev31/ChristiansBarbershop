@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Scissors, AlertCircle, Eye, EyeOff } from "lucide-react"
 import { signInWithEmailAndPassword } from "firebase/auth"
@@ -15,9 +15,9 @@ import { Label } from "@/components/ui/label"
 import { toast } from "react-hot-toast"
 import Cookies from 'js-cookie'
 
+
 export default function LoginPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")

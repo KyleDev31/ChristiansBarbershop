@@ -206,8 +206,8 @@ async function sendEmailReminder(appointment: Appointment) {
           <div style="background-color: #e8f4fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0; color: #0066cc; font-size: 14px;">
               <strong>Location:</strong> Poblacion Nabunturan, Davao de Oro<br>
-              <strong>Phone:</strong> (123) 456-7890<br>
-              <strong>Email:</strong> info@christiansbarbershop.com
+              <strong>Phone:</strong> 09500675739<br>
+              <strong>Email:</strong> christians.barbershop2011@gmail.com
             </p>
           </div>
           
