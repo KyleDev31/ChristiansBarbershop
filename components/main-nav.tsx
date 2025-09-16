@@ -11,14 +11,14 @@ export function MainNav() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   return (
-    <div className="mr-4 flex items-center justify-between">
+    <div className="flex items-center">
       <Link href="/" className="flex items-center">
-        <Scissors className="h-6 w-6 mr-2 ml-4" />
+        <Scissors className="h-6 w-6 mr-2" />
         <span className="font-bold">Christian's Barbershop</span>
       </Link>
       <nav
         className={cn(
-          "flex-col lg:flex-row lg:flex items-center gap-6 text-sm ml-6",
+          "flex-col lg:flex-row lg:flex items-center gap-4 text-sm ml-8",
           isMobileMenuOpen ? "flex" : "hidden lg:flex"
         )}
       >

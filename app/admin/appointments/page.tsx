@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { collection, query, where, getDocs } from "firebase/firestore"
+import { collection, query, where, getDocs, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { format, startOfWeek, addDays, isSameDay, parse } from "date-fns"
+import { format, startOfWeek, addDays, isSameDay, parse, startOfDay, endOfDay, endOfWeek } from "date-fns"
 import { Card } from "@/components/ui/card"
-import { Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Loader2, Bell } from "lucide-react"
 
 const timeSlots = [
   "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM",
@@ -24,37 +26,136 @@ export default function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [view, setView] = useState<'day' | 'week'>('day')
+  const [resultOpen, setResultOpen] = useState(false)
+  const [resultData, setResultData] = useState<any | null>(null)
+  const [isSendingReminders, setIsSendingReminders] = useState(false)
 
   useEffect(() => {
     const fetchAppointments = async () => {
       setIsLoading(true)
-      let datesToFetch: string[] = []
-      if (view === 'day') {
-        datesToFetch = [format(selectedDate, "MMMM d, yyyy")]
-      } else {
-        datesToFetch = getWeekDates(selectedDate).map(d => format(d, "MMMM d, yyyy"))
-      }
+
+      // Attempt to query by Timestamp (scheduledAt) for accurate day/week ranges
       const appointmentsRef = collection(db, "appointments")
-      const q = query(
-        appointmentsRef,
-        where("date", "in", datesToFetch)
-      )
-      const querySnapshot = await getDocs(q)
-      const data = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      setAppointments(data)
+      let results: any[] = []
+
+      if (view === 'day') {
+        // use a slightly expanded window (previous day -> next day) to account for timezone offsets
+        const windowStart = Timestamp.fromDate(startOfDay(addDays(selectedDate, -1)))
+        const windowEnd = Timestamp.fromDate(endOfDay(addDays(selectedDate, 1)))
+        const qts = query(appointmentsRef, where("scheduledAt", ">=", windowStart), where("scheduledAt", "<=", windowEnd))
+        const snapTs = await getDocs(qts)
+        results = snapTs.docs.map(d => ({ id: d.id, ...d.data() }))
+
+        // also fetch by string date as additional fallback
+        const dateStr = format(selectedDate, "MMMM d, yyyy")
+        const qstr = query(appointmentsRef, where("date", "==", dateStr))
+        const snapStr = await getDocs(qstr)
+        const stringResults = snapStr.docs.map(d => ({ id: d.id, ...d.data() }))
+
+        // merge unique (id) results
+        const byId = new Map<string, any>()
+        results.concat(stringResults).forEach(r => byId.set(r.id, r))
+        results = Array.from(byId.values())
+      } else {
+        // week view: expand window by one day on both ends and filter client-side
+        const weekStart = startOfDay(addDays(getWeekDates(selectedDate)[0], -1))
+        const weekEnd = endOfDay(addDays(getWeekDates(selectedDate)[6], 1))
+        const qts = query(appointmentsRef, where("scheduledAt", ">=", Timestamp.fromDate(weekStart)), where("scheduledAt", "<=", Timestamp.fromDate(weekEnd)))
+        const snapTs = await getDocs(qts)
+        results = snapTs.docs.map(d => ({ id: d.id, ...d.data() }))
+
+        // fallback: also fetch by string dates for the week and merge unique
+        const datesToFetch = getWeekDates(selectedDate).map(d => format(d, "MMMM d, yyyy"))
+        const qstr = query(appointmentsRef, where("date", "in", datesToFetch))
+        const snapStr = await getDocs(qstr)
+        const stringResults = snapStr.docs.map(d => ({ id: d.id, ...d.data() }))
+        const byId = new Map<string, any>()
+        results.concat(stringResults).forEach(r => byId.set(r.id, r))
+        results = Array.from(byId.values())
+      }
+
+      // Normalize: derive date/time from scheduledAt when missing so UI can render correctly
+      const normalized = results.map((r) => {
+        const scheduled: any = r.scheduledAt
+        const hasDate = !!r.date
+        const hasTime = !!r.time
+        let dateVal = r.date
+        let timeVal = r.time
+        try {
+          if (!hasDate && scheduled && scheduled.toDate) {
+            dateVal = format(scheduled.toDate(), "MMMM d, yyyy")
+          }
+          if (!hasTime && scheduled && scheduled.toDate) {
+            timeVal = format(scheduled.toDate(), "h:mm a")
+          }
+        } catch (e) {
+          // ignore formatting errors
+        }
+        return { ...r, date: dateVal, time: timeVal }
+      })
+
+      // Client-side filtering: keep only records that match the selected date/week in local timezone
+      const filtered = normalized.filter((r) => {
+        if (view === 'day') {
+          const d = r.scheduledAt && r.scheduledAt.toDate ? r.scheduledAt.toDate() : (r.date ? parse(r.date, 'MMMM d, yyyy', new Date()) : null)
+          if (!d) return true // keep if we can't determine
+          return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth() && d.getDate() === selectedDate.getDate()
+        } else {
+          // week: check if date is within weekDates
+          const d = r.scheduledAt && r.scheduledAt.toDate ? r.scheduledAt.toDate() : (r.date ? parse(r.date, 'MMMM d, yyyy', new Date()) : null)
+          if (!d) return true
+          return getWeekDates(selectedDate).some(wd => wd.getFullYear() === d.getFullYear() && wd.getMonth() === d.getMonth() && wd.getDate() === d.getDate())
+        }
+      })
+
+      results = filtered
+
+      // Use the filtered, normalized set for the UI
+      setAppointments(results)
       setIsLoading(false)
     }
     fetchAppointments()
   }, [selectedDate, view])
 
-  // Map appointments by date and time for quick lookup
-  const appointmentsByDateTime: Record<string, Record<string, any>> = {}
+  // Map appointments by date and time for quick lookup (support multiple per slot)
+  const appointmentsByDateTime: Record<string, Record<string, any[]>> = {}
   appointments.forEach(appt => {
-    if (!appointmentsByDateTime[appt.date]) appointmentsByDateTime[appt.date] = {}
-    appointmentsByDateTime[appt.date][appt.time] = appt
+    const dateKey = appt.date
+    const timeKey = appt.time
+    if (!dateKey || !timeKey) return
+    if (!appointmentsByDateTime[dateKey]) appointmentsByDateTime[dateKey] = {}
+    if (!appointmentsByDateTime[dateKey][timeKey]) appointmentsByDateTime[dateKey][timeKey] = []
+    appointmentsByDateTime[dateKey][timeKey].push(appt)
   })
 
   const weekDates = getWeekDates(selectedDate)
+
+  const sendReminders = async () => {
+    setIsSendingReminders(true)
+    try {
+      const response = await fetch('/api/reminders/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetDate: format(addDays(new Date(), 1), 'yyyy-MM-dd')
+        })
+      })
+      
+      const result = await response.json()
+      setResultData(result)
+      setResultOpen(true)
+    } catch (error) {
+      setResultData({
+        ok: false,
+        error: error instanceof Error ? error.message : 'Failed to send reminders'
+      })
+      setResultOpen(true)
+    } finally {
+      setIsSendingReminders(false)
+    }
+  }
 
   return (
     <div className="container py-10 ml-4">
@@ -88,6 +189,16 @@ export default function AdminAppointmentsPage() {
             onClick={() => setView('week')}
           >Week</button>
               </div>
+        <div className="ml-auto">
+          <Button 
+            onClick={sendReminders}
+            disabled={isSendingReminders}
+            className="flex items-center gap-2"
+          >
+            <Bell className="w-4 h-4" />
+            {isSendingReminders ? 'Sending...' : 'Send Tomorrow\'s Reminders'}
+          </Button>
+        </div>
             </div>
       <div className="bg-white rounded-lg shadow p-4 overflow-x-auto">
         {isLoading ? (
@@ -98,32 +209,34 @@ export default function AdminAppointmentsPage() {
         ) : view === 'day' ? (
           <div>
             {timeSlots.map((slot) => {
-              const appt = appointmentsByDateTime[format(selectedDate, "MMMM d, yyyy")]?.[slot]
-                return (
-                <div key={slot} className={`flex items-center border-b last:border-b-0 py-3 ${appt ? "bg-red-50" : ""}`}>
+              const appts = appointmentsByDateTime[format(selectedDate, "MMMM d, yyyy")]?.[slot] || []
+              const sorted = [...appts].sort((a, b) => (a.barber || "").localeCompare(b.barber || ""))
+              return (
+                <div key={slot} className={`flex items-center border-b last:border-b-0 py-3 ${sorted.length ? "bg-red-50" : ""}`}>
                   <div className="w-32 font-medium text-muted-foreground">{slot}</div>
-                  {appt ? (
-                    <div className="flex-1">
-                      <div className="font-semibold truncate" title={appt.name || appt.customer || appt.email}>
-                        {appt.name || appt.customer || appt.email}
+                  {sorted.length ? (
+                    <div className="flex-1 flex flex-wrap gap-2">
+                      {sorted.map((appt, idx) => (
+                        <div key={appt.id || idx} className="p-2 rounded-md bg-white border min-w-[220px]">
+                          <div className="font-semibold truncate" title={appt.name || appt.customer || appt.email}>
+                            {appt.name || appt.customer || appt.email}
+                          </div>
+                          {appt.email && (
+                            <div className="text-xs text-muted-foreground truncate" title={appt.email}>
+                              {appt.email}
                             </div>
-                      {appt.email && (
-                        <div className="text-xs text-muted-foreground truncate" title={appt.email}>
-                          {appt.email}
+                          )}
+                          <div className="text-xs">{appt.serviceName || appt.service}</div>
+                          <div className="text-xs text-muted-foreground">Barber: {appt.barber}</div>
                         </div>
-                      )}
-                      <div className="text-xs">{appt.serviceName || appt.service}</div>
-                      <div className="text-xs text-muted-foreground">Barber: {appt.barber}</div>
+                      ))}
                     </div>
                   ) : (
                     <div className="flex-1 text-muted-foreground">Available</div>
                   )}
-                  {appt && (
-                    <div className="text-right text-sm min-w-[60px]">{appt.estimatedWait ? `${appt.estimatedWait} min` : ""}</div>
-                  )}
-                  </div>
-                )
-              })}
+                </div>
+              )
+            })}
             </div>
           ) : (
           <div className="min-w-[900px]">
@@ -142,35 +255,112 @@ export default function AdminAppointmentsPage() {
               <div key={slot} className="grid grid-cols-8 gap-2 border-b last:border-b-0 py-1">
                 <div className="col-span-1 text-sm text-muted-foreground pt-2">{slot}</div>
                 {weekDates.map(day => {
-                  const appt = appointmentsByDateTime[format(day, "MMMM d, yyyy")]?.[slot]
-                      return (
+                  const appts = appointmentsByDateTime[format(day, "MMMM d, yyyy")]?.[slot] || []
+                  const sorted = [...appts].sort((a, b) => (a.barber || "").localeCompare(b.barber || ""))
+                  return (
                     <div key={day.toISOString()} className="col-span-1">
-                      {appt ? (
-                        <div className="p-2 rounded-md bg-red-50">
-                          <div className="font-semibold truncate" title={appt.name || appt.customer || appt.email}>
-                            {appt.name || appt.customer || appt.email}
-                          </div>
-                          {appt.email && (
-                            <div className="text-xs text-muted-foreground truncate" title={appt.email}>
-                              {appt.email}
+                      {sorted.length ? (
+                        <div className="p-2 rounded-md bg-red-50 space-y-2">
+                          {sorted.map((appt, idx) => (
+                            <div key={appt.id || idx} className="p-2 rounded-md bg-white border">
+                              <div className="font-semibold truncate" title={appt.name || appt.customer || appt.email}>
+                                {appt.name || appt.customer || appt.email}
                               </div>
-                          )}
-                          <div className="text-xs">{appt.serviceName || appt.service}</div>
-                          <div className="text-xs text-muted-foreground">Barber: {appt.barber}</div>
+                              {appt.email && (
+                                <div className="text-xs text-muted-foreground truncate" title={appt.email}>
+                                  {appt.email}
+                                </div>
+                              )}
+                              <div className="text-xs">{appt.serviceName || appt.service}</div>
+                              <div className="text-xs text-muted-foreground">Barber: {appt.barber}</div>
+                            </div>
+                          ))}
                         </div>
-                          ) : (
+                      ) : (
                         <div className="h-10 border border-dashed rounded-md flex items-center justify-center text-xs text-muted-foreground">
                           Available
                         </div>
-                          )}
-                        </div>
-                      )
-                    })}
+                      )}
+                    </div>
+                  )
+                })}
                   </div>
                 ))}
               </div>
         )}
             </div>
+
+      {/* Result dialog (pop-up) */}
+      <Dialog open={resultOpen} onOpenChange={setResultOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {resultData?.success ? 'Reminders Sent Successfully' : 'Reminder Error'}
+            </DialogTitle>
+            <DialogDescription>
+              {resultData?.success ? (
+                resultData?.total === 0 
+                  ? 'No appointments found for tomorrow.' 
+                  : `Processed ${resultData?.total} appointments. ${resultData?.sent} reminders sent successfully.`
+              ) : (
+                resultData?.error || 'An error occurred while sending reminders.'
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2">
+            {resultData?.appointments && Array.isArray(resultData.appointments) && (
+              <div className="space-y-2 max-h-60 overflow-auto">
+                <h4 className="font-medium text-sm">Appointment Details:</h4>
+                {resultData.appointments.map((r: any) => (
+                  <div key={r.id} className="p-3 border rounded bg-gray-50">
+                    <div className="text-sm font-medium">{r.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Email: <span className={r.emailStatus === 'sent' ? 'text-green-600' : r.emailStatus === 'failed' ? 'text-red-600' : 'text-gray-500'}>{r.emailStatus}</span>
+                      {r.email && ` (${r.email})`}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      SMS: <span className={r.smsStatus === 'sent' ? 'text-green-600' : r.smsStatus === 'failed' ? 'text-red-600' : 'text-gray-500'}>{r.smsStatus}</span>
+                      {r.phone && ` (${r.phone})`}
+                    </div>
+                    {r.error && (
+                      <div className="text-xs text-red-600 mt-1">{r.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {resultData?.debug && (
+              <div className="mt-4 p-2 rounded bg-yellow-50 text-sm">
+                <div className="font-medium">Debug info:</div>
+                <div className="mt-1">Date string query: <code>{resultData.dateStr}</code></div>
+                <div className="mt-1">Window query results: {resultData.windowCount} found</div>
+                <div className="mt-1">Date query results: {resultData.dateCount} found</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="font-medium">Window docs (first 5):</div>
+                    {resultData.windowDocs?.slice(0, 5).map((doc: any) => (
+                      <div key={doc.id} className="text-xs truncate" title={JSON.stringify(doc)}>
+                        {doc.id} - {doc.barber} - {doc.serviceName}
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="font-medium">Date docs (first 5):</div>
+                    {resultData.dateDocs?.slice(0, 5).map((doc: any) => (
+                      <div key={doc.id} className="text-xs truncate" title={JSON.stringify(doc)}>
+                        {doc.id} - {doc.barber} - {doc.serviceName}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setResultOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

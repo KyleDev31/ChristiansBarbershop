@@ -21,13 +21,15 @@ export function SiteHeader() {
   }, []);
 
   return (
-    <div className="container flex h-16 items-center">
-      <MobileNav />
-      <MainNav />
-      <div className="ml-auto flex items-center gap-4">
+    <div className="container flex h-16 items-center justify-between">
+      <div className="flex items-center">
+        <MobileNav />
+        <MainNav />
+      </div>
+      <div className="flex items-center gap-4 ml-auto">
         {/* Only show name if user is logged in */}
         {user && (
-          <span className="text-sm font-bold leading-none text-yellow-900">
+          <span className="text-sm font-semibold leading-none text-gray-700 hidden sm:block px-3 py-1 bg-gray-50 rounded-full border">
             {user.displayName || user.email || "User"}
           </span>
         )}

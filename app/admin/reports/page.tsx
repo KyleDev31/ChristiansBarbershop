@@ -35,6 +35,7 @@ export default function ReportsPage() {
   const [fromDate, setFromDate] = useState(subDays(new Date(), 7))
   const [toDate, setToDate] = useState(new Date())
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const [rangePopoverOpen, setRangePopoverOpen] = useState(false)
   const [totalRevenue, setTotalRevenue] = useState(0)
   const [serviceRevenue, setServiceRevenue] = useState(0)
   const [productRevenue, setProductRevenue] = useState(0)
@@ -46,28 +47,149 @@ export default function ReportsPage() {
   const [appointmentData, setAppointmentData] = useState<any[]>([])
   const [barberData, setBarberData] = useState<any[]>([])
   const [productSales, setProductSales] = useState(0)
+  const [totalAppointments, setTotalAppointments] = useState(0)
+  const [completedAppointments, setCompletedAppointments] = useState(0)
+  const [cancelledAppointments, setCancelledAppointments] = useState(0)
   const [showConfirm, setShowConfirm] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
-    const fetchTotalAvailedServices = async () => {
-      const querySnapshot = await getDocs(collection(db, "sales"))
-      let total = 0
+    // Services popularity and totals by service name
+    const fetchServiceAggregates = async () => {
+      const salesRef = collection(db, "sales")
+      const querySnapshot = await getDocs(salesRef)
+      const nameToCount: Record<string, number> = {}
+      let totalServices = 0
       querySnapshot.forEach(doc => {
-        const service = doc.data()
-        let serviceDate = service.date
-        if (typeof serviceDate === "string") serviceDate = parseISO(serviceDate)
-        else if (serviceDate && serviceDate.toDate) serviceDate = serviceDate.toDate()
+        const sale = doc.data()
+        let saleDate = sale.date
+        if (typeof saleDate === "string") saleDate = parseISO(saleDate)
+        else if (saleDate && saleDate.toDate) saleDate = saleDate.toDate()
         if (
-          serviceDate &&
-          (isEqual(serviceDate, fromDate) || isEqual(serviceDate, toDate) || (isAfter(serviceDate, fromDate) && isBefore(serviceDate, toDate)))
+          saleDate &&
+          (isEqual(saleDate, fromDate) || isEqual(saleDate, toDate) || (isAfter(saleDate, fromDate) && isBefore(saleDate, toDate)))
         ) {
-          total += 1 // Count each availed service
+          if (Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+              if (item.type === "services" || item.type === "service") {
+                const qty = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity)
+                const count = isNaN(qty) ? 1 : qty
+                const name = item.name || "Service"
+                nameToCount[name] = (nameToCount[name] || 0) + count
+                totalServices += count
+              }
+            })
+          }
         }
       })
-      setTotalAvailedServices(total)
+      setTotalAvailedServices(totalServices)
+      const list = Object.entries(nameToCount).map(([name, value]) => ({ name, value }))
+      list.sort((a, b) => b.value - a.value)
+      setServiceData(list)
     }
-    fetchTotalAvailedServices()
+    fetchServiceAggregates()
+  }, [fromDate, toDate])
+
+  useEffect(() => {
+    // Product totals and breakdown by product name
+    const fetchProductAggregates = async () => {
+      const salesRef = collection(db, "sales")
+      const querySnapshot = await getDocs(salesRef)
+      const productToUnits: Record<string, number> = {}
+      let totalProductsRevenue = 0
+      querySnapshot.forEach(doc => {
+        const sale = doc.data()
+        let saleDate = sale.date
+        if (typeof saleDate === "string") saleDate = parseISO(saleDate)
+        else if (saleDate && saleDate.toDate) saleDate = saleDate.toDate()
+        if (
+          saleDate &&
+          (isEqual(saleDate, fromDate) || isEqual(saleDate, toDate) || (isAfter(saleDate, fromDate) && isBefore(saleDate, toDate)))
+        ) {
+          if (Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+              if (item.type === "products" || item.type === "product") {
+                const price = typeof item.price === "number" ? item.price : parseFloat(item.price)
+                const qty = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity)
+                const units = isNaN(qty) ? 1 : qty
+                totalProductsRevenue += (isNaN(price) ? 0 : price) * units
+                const name = item.name || "Product"
+                productToUnits[name] = (productToUnits[name] || 0) + units
+              }
+            })
+          }
+        }
+      })
+      setProductSales(totalProductsRevenue)
+      const list = Object.entries(productToUnits).map(([name, value]) => ({ name, value }))
+      list.sort((a, b) => b.value - a.value)
+      setProductData(list)
+    }
+    fetchProductAggregates()
+  }, [fromDate, toDate])
+
+  useEffect(() => {
+    // Appointments stats and daily distribution
+    const fetchAppointments = async () => {
+      const apptSnap = await getDocs(collection(db, "appointments"))
+      let total = 0, completed = 0, cancelled = 0
+      const dayMap: Record<string, { date: string; completed: number; cancelled: number }> = {}
+      apptSnap.forEach(d => {
+        const a: any = d.data()
+        let when: any = a.scheduledAt || a.completedAt || a.createdAt || a.date
+        if (typeof when === "string") when = parseISO(when)
+        else if (when && when.toDate) when = when.toDate()
+        if (
+          when &&
+          (isEqual(when, fromDate) || isEqual(when, toDate) || (isAfter(when, fromDate) && isBefore(when, toDate)))
+        ) {
+          total += 1
+          const dateKey = when.toLocaleDateString()
+          if (!dayMap[dateKey]) dayMap[dateKey] = { date: dateKey, completed: 0, cancelled: 0 }
+          if ((a.status || "").toLowerCase() === "completed") {
+            completed += 1
+            dayMap[dateKey].completed += 1
+          } else if ((a.status || "").toLowerCase() === "cancelled") {
+            cancelled += 1
+            dayMap[dateKey].cancelled += 1
+          }
+        }
+      })
+      setTotalAppointments(total)
+      setCompletedAppointments(completed)
+      setCancelledAppointments(cancelled)
+      const list = Object.values(dayMap).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      setAppointmentData(list)
+    }
+    fetchAppointments()
+  }, [fromDate, toDate])
+
+  useEffect(() => {
+    // Barber metrics: clients count and revenue by barber inferred from sales items
+    const fetchBarberMetrics = async () => {
+      const salesRef = collection(db, "sales")
+      const querySnapshot = await getDocs(salesRef)
+      const map: Record<string, { name: string; clients: number; rating: number; revenue: number }> = {}
+      querySnapshot.forEach(doc => {
+        const sale = doc.data()
+        let saleDate = sale.date
+        if (typeof saleDate === "string") saleDate = parseISO(saleDate)
+        else if (saleDate && saleDate.toDate) saleDate = saleDate.toDate()
+        if (
+          saleDate &&
+          (isEqual(saleDate, fromDate) || isEqual(saleDate, toDate) || (isAfter(saleDate, fromDate) && isBefore(saleDate, toDate)))
+        ) {
+          const barber = (sale.barber || sale.barberName || "Unknown").toString()
+          if (!map[barber]) map[barber] = { name: barber, clients: 0, rating: 0, revenue: 0 }
+          map[barber].clients += 1
+          const total = typeof sale.total === "number" ? sale.total : parseFloat(sale.total)
+          map[barber].revenue += isNaN(total) ? 0 : total
+        }
+      })
+      const list = Object.values(map).sort((a, b) => b.revenue - a.revenue)
+      setBarberData(list)
+    }
+    fetchBarberMetrics()
   }, [fromDate, toDate])
 
   useEffect(() => {
@@ -281,15 +403,12 @@ export default function ReportsPage() {
   const handleConfirmExport = async () => {
     setIsExporting(true)
     setShowConfirm(false)
-    // Collect your data here (serviceData, productData, etc.)
+    // Ask server to generate the report for the currently selected date range
     const res = await fetch("/api/export-reports", {
       method: "POST",
       body: JSON.stringify({
-        serviceData,
-        productData,
-        appointmentData,
-        barberData,
-        recentTransactions,
+        fromDate: fromDate.toISOString(),
+        toDate: toDate.toISOString(),
       }),
       headers: {
         "Content-Type": "application/json",
@@ -367,6 +486,45 @@ export default function ReportsPage() {
               )}
             </PopoverContent>
           </Popover>
+
+          {/* Dedicated calendar popover for quick date range selection */}
+          <Popover open={rangePopoverOpen} onOpenChange={setRangePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline">
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                Select Date
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-3" align="end">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-sm font-medium mb-1">From</p>
+                  <Calendar
+                    mode="single"
+                    selected={fromDate}
+                    onSelect={(date) => date && setFromDate(date)}
+                    disabled={(date) => date > toDate || date > new Date()}
+                    initialFocus
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-medium mb-1">To</p>
+                  <Calendar
+                    mode="single"
+                    selected={toDate}
+                    onSelect={(date) => date && setToDate(date)}
+                    disabled={(date) => date < fromDate || date > new Date()}
+                    initialFocus
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button size="sm" variant="ghost" onClick={() => { setRangePopoverOpen(false) }}>Cancel</Button>
+                <Button size="sm" onClick={() => { setDateRange('custom'); setRangePopoverOpen(false) }}>Apply</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <Button
             variant="outline"
             onClick={handleExportClick}
@@ -630,8 +788,8 @@ export default function ReportsPage() {
                 <CardDescription>Per sale</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">₱280.00</div>
-                <p className="text-xs text-green-500">+3.5% from previous period</p>
+                <div className="text-3xl font-bold">{productData.length ? `₱${(productSales / productData.reduce((s, p) => s + p.value, 0)).toFixed(2)}` : "—"}</div>
+                <p className="text-xs text-muted-foreground">From Firestore</p>
               </CardContent>
             </Card>
 
@@ -641,8 +799,8 @@ export default function ReportsPage() {
                 <CardDescription>Highest sales</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-xl font-bold">Hair Wax</div>
-                <p className="text-xs text-muted-foreground">35 units sold</p>
+                <div className="text-xl font-bold">{productData[0]?.name || "No data"}</div>
+                <p className="text-xs text-muted-foreground">{productData[0]?.value ? `${productData[0].value} units` : "—"}</p>
               </CardContent>
             </Card>
           </div>
@@ -712,8 +870,8 @@ export default function ReportsPage() {
                 <CardDescription>For the selected period</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">89</div>
-                <p className="text-xs text-green-500">+7.2% from previous period</p>
+                <div className="text-3xl font-bold">{totalAppointments}</div>
+                <p className="text-xs text-muted-foreground">From Firestore</p>
               </CardContent>
             </Card>
 
@@ -723,8 +881,10 @@ export default function ReportsPage() {
                 <CardDescription>Successfully fulfilled</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">79</div>
-                <p className="text-xs text-muted-foreground">88.8% completion rate</p>
+                <div className="text-3xl font-bold">{completedAppointments}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalAppointments > 0 ? `${((completedAppointments / totalAppointments) * 100).toFixed(1)}% completion` : "—"}
+                </p>
               </CardContent>
             </Card>
 
@@ -734,8 +894,10 @@ export default function ReportsPage() {
                 <CardDescription>No-shows and cancellations</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">10</div>
-                <p className="text-xs text-amber-500">11.2% cancellation rate</p>
+                <div className="text-3xl font-bold">{cancelledAppointments}</div>
+                <p className="text-xs text-muted-foreground">
+                  {totalAppointments > 0 ? `${((cancelledAppointments / totalAppointments) * 100).toFixed(1)}% cancelled` : "—"}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -836,8 +998,10 @@ export default function ReportsPage() {
                 <CardDescription>Highest revenue</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-xl font-bold">John Doe</div>
-                <p className="text-xs text-muted-foreground">₱5,250 revenue</p>
+                <div className="text-xl font-bold">{barberData[0]?.name || "—"}</div>
+                <p className="text-xs text-muted-foreground">
+                  {barberData[0]?.revenue != null ? `₱${Number(barberData[0].revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} revenue` : "No data"}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -850,34 +1014,16 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
-                  <div className="grid grid-cols-5 bg-muted p-3 text-sm font-medium">
+                  <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
                     <div className="col-span-1">Barber</div>
                     <div className="col-span-1">Clients</div>
-                    <div className="col-span-1">Rating</div>
                     <div className="col-span-1">Revenue</div>
                     <div className="col-span-1">Performance</div>
                   </div>
                   {barberData.map((barber, index) => (
-                    <div key={index} className="grid grid-cols-5 p-3 text-sm border-t">
+                    <div key={index} className="grid grid-cols-4 p-3 text-sm border-t">
                       <div className="col-span-1 font-medium">{barber.name}</div>
                       <div className="col-span-1">{barber.clients}</div>
-                      <div className="col-span-1">
-                        <div className="flex items-center">
-                          <span className="mr-1">{barber.rating}</span>
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            className="w-4 h-4 text-yellow-500"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      </div>
                       <div className="col-span-1">{formatCurrency(barber.revenue)}</div>
                       <div className="col-span-1">
                         <div className="w-full bg-muted rounded-full h-2.5">
@@ -898,46 +1044,32 @@ export default function ReportsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Revenue by Barber</CardTitle>
-                <CardDescription>Monthly performance trend</CardDescription>
+                <CardDescription>Performance in selected period</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer
-                  config={{
-                    "John Doe": {
-                      label: "John Doe",
-                      color: "hsl(var(--chart-1))",
-                    },
-                    "Mike Smith": {
-                      label: "Mike Smith",
-                      color: "hsl(var(--chart-2))",
-                    },
-                    "Alex Johnson": {
-                      label: "Alex Johnson",
-                      color: "hsl(120, 70%, 50%)",
-                    },
-                  }}
-                  className="aspect-[4/3]"
-                >
-                  <LineChart
-                    data={[
-                      { month: "Jan", "John Doe": 4200, "Mike Smith": 3800, "Alex Johnson": 3100 },
-                      { month: "Feb", "John Doe": 4500, "Mike Smith": 4000, "Alex Johnson": 3300 },
-                      { month: "Mar", "John Doe": 4800, "Mike Smith": 4200, "Alex Johnson": 3500 },
-                      { month: "Apr", "John Doe": 5000, "Mike Smith": 4100, "Alex Johnson": 3400 },
-                      { month: "May", "John Doe": 5250, "Mike Smith": 4200, "Alex Johnson": 3300 },
-                    ]}
-                    margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
-                  >
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Legend />
-                    <Line type="monotone" dataKey="John Doe" stroke="var(--color-John Doe)" strokeWidth={2} />
-                    <Line type="monotone" dataKey="Mike Smith" stroke="var(--color-Mike Smith)" strokeWidth={2} />
-                    <Line type="monotone" dataKey="Alex Johnson" stroke="var(--color-Alex Johnson)" strokeWidth={2} />
-                  </LineChart>
-                </ChartContainer>
+                <div className="rounded-md border">
+                  <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
+                    <div>Barber</div>
+                    <div>Clients</div>
+                    <div>Revenue</div>
+                    <div>Share</div>
+                  </div>
+                  {barberData.map((b, i) => (
+                    <div key={i} className="grid grid-cols-4 p-3 text-sm border-t">
+                      <div className="font-medium">{b.name}</div>
+                      <div>{b.clients}</div>
+                      <div>₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>
+                        <div className="w-full bg-muted rounded-full h-2.5">
+                          <div
+                            className="bg-primary h-2.5 rounded-full"
+                            style={{ width: `${(b.revenue / Math.max(1, ...barberData.map(x => x.revenue))) * 100}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>

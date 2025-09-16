@@ -1,179 +1,173 @@
+"use client"
 import type React from "react"
-import type { Metadata } from "next"
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Clock, Scissors, SprayCanIcon as Spray, CombineIcon as Comb } from "lucide-react"
+import { Clock, Scissors, SprayCanIcon as Spray, CombineIcon as Comb, Zap, Sparkles, Crown, Star } from "lucide-react"
 import { SiteHeader } from "@/components/site-header"
 
-export const metadata: Metadata = {
-  title: "Services | Christian's Barbershop",
-  description: "Explore our range of professional barbering services",
+// Firestore imports
+import { db } from "@/lib/firebase"
+import { collection, getDocs } from "firebase/firestore"
+
+interface Service {
+  id: string
+  name: string
+  price: number
+  duration: string | number
+  description: string
+  image: string
+  category: string
 }
 
-// Mock data for services
-const services = {
-  haircuts: [
-    {
-      id: 1,
-      name: "Christian's Haircut + Hair Blow Dry",
-      price: 120,
-      duration: "30 min",
-      description: "A traditional haircut with scissors and clippers, includes styling.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-    {
-      id: 2,
-      name: "Christian's + Haircut + Shampoo",
-      price: 160,
-      duration: "45 min",
-      description: "Precision fade haircut with detailed edges and styling.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-    {
-      id: 3,
-      name: "Christian's Haircut + Hair Color",
-      price: 350,
-      duration: "20 min",
-      description: "Quick and clean all-over short cut with clippers.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-    {
-      id: 4,
-      name: "Christian's Haircut + Hair Relax",
-      price: 390,
-      duration: "30 min",
-      description: "Haircut service for children under 12 years old.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-  ],
-  beardAndShave: [
-    {
-      id: 5,
-      name: "Christian's Shave",
-      price: 80,
-      duration: "20 min",
-      description: "Precise beard trimming and shaping to maintain your style.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-    {
-      id: 6,
-      name: "Shave + Hot Towel",
-      price: 130,
-      duration: "30 min",
-      description: "Traditional hot towel straight razor shave with moisturizing treatment.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Scissors,
-    },
-  ],
-  packages: [
-    {
-      id: 11,
-      name: "Haircut + Shampoo + Hair Blow Dry + Light Massage + Hot Towel",
-      price: 270,
-      duration: "75 min",
-      description: "Haircut, beard trim, and facial treatment for the complete experience.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Comb,
-    },
-    {
-      id: 12,
-      name: "Christian's Haircut + Hair Bleaching + Hair Color",
-      price: 550,
-      duration: "60 min",
-      description: "Haircuts for father and son in one appointment.",
-      image: "/placeholder.svg?height=200&width=300",
-      icon: Comb,
-    },
-  ],
+const CATEGORY_LABELS: Record<string, string> = {
+  haircut: "Haircuts",
+  beard: "Beard & Shave",
+  combo: "Packages",
+  color: "Color",
+  facial: "Facial",
+  addon: "Add-ons",
 }
+
+const CATEGORY_TABS = [
+  { value: "haircut", label: "Haircuts" },
+  { value: "beard", label: "Beard & Shave" },
+  { value: "combo", label: "Packages" },
+  // Add more categories if needed
+]
 
 export default function ServicesPage() {
-  return (
-    <div className="container py-10 px-4 sm:px-8">
-      <SiteHeader/>
-      <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold tracking-tight mb-2">Our Services</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Professional barbering services tailored to your style and needs
-        </p>
-      </div>
+  const [services, setServices] = useState<Service[]>([])
+  const [loading, setLoading] = useState(true)
 
-      <Tabs defaultValue="haircuts" className="w-full">
-        <div className="flex justify-center mb-8">
-          <TabsList className="grid grid-cols-2 md:grid-cols-3 w-full max-w-2xl">
-            <TabsTrigger value="haircuts">Haircuts</TabsTrigger>
-            <TabsTrigger value="beardAndShave">Beard & Shave</TabsTrigger>
-            <TabsTrigger value="packages">Packages</TabsTrigger>
-          </TabsList>
+  useEffect(() => {
+    const fetchServices = async () => {
+      const querySnapshot = await getDocs(collection(db, "services"))
+      const data: Service[] = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as Service[]
+      setServices(data)
+      setLoading(false)
+    }
+    fetchServices()
+  }, [])
+
+  // Group services by category
+  const grouped: Record<string, Service[]> = {}
+  services.forEach(service => {
+    const cat = service.category || "other"
+    if (!grouped[cat]) grouped[cat] = []
+    grouped[cat].push(service)
+  })
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <SiteHeader/>
+      <div className="container mx-auto py-10 px-4 sm:px-8 max-w-7xl">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold tracking-tight mb-4 text-gray-900">Our Services</h1>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Professional barbering services tailored to your style and needs
+          </p>
         </div>
 
-        {Object.entries(services).map(([category, items]) => (
-          <TabsContent key={category} value={category} className="mt-0">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {items.map((service) => (
-                <ServiceCard key={service.id} service={service} />
+        <Tabs defaultValue="haircut" className="w-full">
+          <div className="flex justify-center mb-10">
+            <TabsList className="grid grid-cols-2 md:grid-cols-3 w-full max-w-2xl bg-white shadow-sm">
+              {CATEGORY_TABS.map(tab => (
+                <TabsTrigger key={tab.value} value={tab.value} className="font-medium">{tab.label}</TabsTrigger>
               ))}
-            </div>
+            </TabsList>
+          </div>
+
+        {CATEGORY_TABS.map(tab => (
+          <TabsContent key={tab.value} value={tab.value} className="mt-0">
+            {loading ? (
+              <div className="text-center py-10 text-muted-foreground">Loading...</div>
+            ) : (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 justify-items-center">
+                {(grouped[tab.value] || []).length > 0 ? (
+                  grouped[tab.value].map(service => (
+                    <ServiceCard key={service.id} service={service} />
+                  ))
+                ) : (
+                  <div className="col-span-full text-center text-gray-500 py-12">
+                    <div className="text-6xl mb-4">✂️</div>
+                    <p className="text-lg">No services found in this category.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
         ))}
       </Tabs>
 
-      <div className="mt-16 text-center">
-        <h2 className="text-2xl font-bold mb-4">Ready for a fresh look?</h2>
-        <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-          Book your appointment today and experience the best barbering service in town.
-        </p>
-        <Button asChild size="lg">
-          <Link href="/booking">Book an Appointment</Link>
-        </Button>
+        <div className="mt-20 text-center bg-white rounded-2xl p-8 shadow-sm border">
+          <h2 className="text-3xl font-bold mb-4 text-gray-900">Ready for a fresh look?</h2>
+          <p className="text-gray-600 mb-8 max-w-2xl mx-auto text-lg">
+            Book your appointment today and experience the best barbering service in town.
+          </p>
+          <Button asChild size="lg" className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-3 text-lg font-semibold">
+            <Link href="/booking">Book an Appointment</Link>
+          </Button>
+        </div>
       </div>
     </div>
   )
 }
 
 interface ServiceProps {
-  service: {
-    id: number
-    name: string
-    price: number
-    duration: string
-    description: string
-    image: string
-    icon: React.ElementType
-  }
+  service: Service
 }
 
 function ServiceCard({ service }: ServiceProps) {
+  // Enhanced icon mapping with more specific icons
+  const iconMap: Record<string, React.ElementType> = {
+    haircut: Scissors,
+    beard: Crown,
+    combo: Star,
+    color: Sparkles,
+    facial: Zap,
+    addon: Comb,
+  }
+  const Icon = iconMap[service.category] || Scissors
+
+  // Color mapping for different categories
+  const colorMap: Record<string, string> = {
+    haircut: "bg-blue-100 text-blue-600",
+    beard: "bg-amber-100 text-amber-600", 
+    combo: "bg-purple-100 text-purple-600",
+    color: "bg-pink-100 text-pink-600",
+    facial: "bg-green-100 text-green-600",
+    addon: "bg-gray-100 text-gray-600",
+  }
+  const iconColor = colorMap[service.category] || "bg-gray-100 text-gray-600"
+
   return (
-    <Card className="overflow-hidden flex flex-col h-full border border-gray-200 shadow-sm transition-transform hover:scale-[1.025] hover:shadow-lg">
-      <div className="aspect-[4/3] relative bg-gray-50">
-        <img
-          src={service.image || "/placeholder.svg"}
-          alt={service.name}
-          className="object-cover w-full h-full rounded-t-md"
-          style={{ maxHeight: 160 }}
-        />
-      </div>
-      <CardHeader className="pb-2 pt-3 px-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base font-semibold">{service.name}</CardTitle>
-          <service.icon className="h-5 w-5 text-muted-foreground" />
+    <Card className="overflow-hidden flex flex-col h-full border border-gray-200 shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-xl bg-white max-w-sm w-full">
+      <CardHeader className="pb-4 pt-6 px-6 text-center">
+        <div className="flex justify-center mb-4">
+          <div className={`p-4 rounded-full ${iconColor} transition-transform hover:scale-110`}>
+            <Icon className="h-8 w-8" />
+          </div>
         </div>
+        <CardTitle className="text-lg font-bold text-gray-900 mb-2">{service.name}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-grow px-4 pb-0 pt-0">
-        <p className="text-muted-foreground text-sm line-clamp-2">{service.description}</p>
-        <div className="flex justify-between items-center mt-3">
-          <p className="font-bold text-base text-primary">₱{service.price}</p>
+      <CardContent className="flex-grow px-6 pb-4 pt-0 text-center">
+        <p className="text-gray-600 text-sm leading-relaxed mb-4">{service.description}</p>
+        <div className="flex justify-center items-center">
+          <span className="text-2xl font-bold text-yellow-600">₱{service.price}</span>
         </div>
       </CardContent>
-      <CardFooter className="px-4 pb-4 pt-2">
+      <CardFooter className="px-6 pb-6 pt-0">
+        <div className="w-full">
+          <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium">
+            <Link href="/booking">Book Now</Link>
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   )

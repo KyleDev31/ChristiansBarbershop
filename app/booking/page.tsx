@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CalendarIcon, ChevronLeft, Scissors } from "lucide-react"
-import { format } from "date-fns"
+import { format, parse, isBefore, isSameDay } from "date-fns"
 import { addDoc, collection, serverTimestamp, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../lib/firebase"; 
 import { Button } from "@/components/ui/button"
@@ -68,22 +68,27 @@ export default function BookingPage() {
 
   useEffect(() => {
     const mockBarbers = [
-      { id: 1, name: "JayBoy", specialty: "Classic Cuts & Hot Towel Shaves", avatar: "/placeholder.svg?height=100&width=100" },
-      { id: 2, name: "Abel", specialty: "Fades & Beard Styling", avatar: "/placeholder.svg?height=100&width=100" },
-      { id: 3, name: "Noel", specialty: "Textured Cuts & Color", avatar: "/placeholder.svg?height=100&width=100" },
-    ]
-    const mockServices = [
-      { id: 1, name: "Christian's Haircut + Hair Blow Dry", description: "Classic haircut with styling", price: 120 },
-      { id: 2, name: "Christian's Shave", description: "Shape and style your beard", price: 80 },
-      { id: 3, name: "Christian's Haircut + Shampoo", description: "Complete grooming package", price: 160 },
-      { id: 4, name: "Shave + Hot Towel", description: "Traditional straight razor shave", price: 130 },
-      { id: 5, name: "Haircut + Shampoo + Hair Blow Dry + Light Massage + Hot Towel", description: "Traditional straight razor shave", price: 270 },
-      { id: 6, name: "Christian's Haircut + Hair Color", description: "Traditional straight razor shave", price: 350 },
-      { id: 7, name: "Christian's Haircut + Hair Relax", description: "Traditional straight razor shave", price: 390 },
-      { id: 8, name: "Christian's Haircut + Hair Bleaching + Hair Color", description: "Traditional straight razor shave", price: 550 },
+      { id: 1, name: "JayBoy", specialty: "Classic Cuts & Hot Towel Shaves", avatar: "/jayboy.jpg?height=100&width=100" },
+      { id: 2, name: "Abel", specialty: "Fades & Beard Styling", avatar: "/abel.jpg?height=100&width=100" },
+      { id: 3, name: "Noel", specialty: "Textured Cuts & Color", avatar: "/noel.jpg?height=100&width=100" },
     ]
     setBarbers(mockBarbers)
-    setServices(mockServices)
+
+    // Load services from Firestore to keep in sync with POS
+    const loadServices = async () => {
+      const snap = await getDocs(collection(db, "services"))
+      const data = snap.docs.map((d, idx) => {
+        const s: any = d.data()
+        return {
+          id: idx + 1,
+          name: s.name || "Service",
+          description: s.description || "",
+          price: typeof s.price === "number" ? s.price : parseFloat(s.price) || 0,
+        }
+      })
+      setServices(data)
+    }
+    loadServices()
   }, [])
 
   const handleNext = () => setStep((prev) => Math.min(prev + 1, 3))
@@ -93,6 +98,25 @@ export default function BookingPage() {
     setIsLoading(true);
     setBookingError(null);
     try {
+      // validate selected date/time are in the future
+      if (!date || !selectedTime) {
+        setBookingError("Please select date and time.");
+        setIsLoading(false);
+        return;
+      }
+      const parsed = parse(selectedTime, "h:mm a", new Date())
+      const slotDate = new Date(date)
+      slotDate.setHours(parsed.getHours(), parsed.getMinutes(), 0, 0)
+      const now = new Date()
+      if (!isBefore(now, slotDate) && !isSameDay(slotDate, now)) {
+        // slotDate is not after now and not a same-day future slot
+      }
+      if (!isBefore(now, slotDate)) {
+        setBookingError("Selected time is in the past. Please choose a future time.");
+        setIsLoading(false);
+        return;
+      }
+
       const selectedServiceData = services.find((s) => s.id === selectedService);
       const selectedBarberData = barbers.find((b) => b.id === selectedBarber);
       const formattedDate = date ? format(date, "MMMM d, yyyy") : "";
@@ -348,11 +372,29 @@ export default function BookingPage() {
                         <SelectValue placeholder="Select a time" />
                       </SelectTrigger>
                       <SelectContent>
-                        {timeSlots.map((time) => (
-                          <SelectItem key={time} value={time}>
-                            {time}
-                          </SelectItem>
-                        ))}
+                        {timeSlots.map((time) => {
+                          // compute slot datetime using selected date
+                          let disabled = false
+                          if (date) {
+                            try {
+                              const parsed = parse(time, "h:mm a", new Date())
+                              const slotDate = new Date(date)
+                              slotDate.setHours(parsed.getHours(), parsed.getMinutes(), 0, 0)
+                              const now = new Date()
+                              if (isSameDay(slotDate, now) && !isBefore(now, slotDate)) {
+                                // slot is earlier than or equal to now on the same day -> disable
+                                disabled = true
+                              }
+                            } catch (e) {
+                              // leave enabled if parse fails
+                            }
+                          }
+                          return (
+                            <SelectItem key={time} value={time} disabled={disabled}>
+                              {time}{disabled ? " — unavailable" : ""}
+                            </SelectItem>
+                          )
+                        })}
                       </SelectContent>
                     </Select>
                   </div>

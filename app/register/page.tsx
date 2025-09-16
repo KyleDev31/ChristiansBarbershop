@@ -112,11 +112,11 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="container py-10 flex justify-center">
+    <div className="min-h-screen flex items-center justify-center py-10">
       <div className="w-full max-w-md">
         {showSuccess && (
           <div className="mb-6 p-4 rounded bg-green-100 text-green-800 text-center font-semibold transition-all">
-            Registered successfully! Redirecting to login...
+           Registered successfully! Redirecting to login...
           </div>
         )}
         <Tabs defaultValue="register">

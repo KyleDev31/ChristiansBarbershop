@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { saveAs } from 'file-saver'
 import { db } from "@/lib/firebase"
-import { addDoc, collection } from "firebase/firestore"
+import { addDoc, collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "firebase/firestore"
 import { toast } from "@/hooks/use-toast"
 
 interface Service {
@@ -61,73 +61,25 @@ interface ServiceReportRow {
 }
 
 export default function POSPage() {
-  // Mock data for services
-  const services: Service[] = [
-    {
-      id: 1,
-      name: "Regular Haircut",
-      price: 150,
-      duration: 30,
-      category: "haircut",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 2,
-      name: "Beard Trim",
-      price: 100,
-      duration: 20,
-      category: "beard",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 3,
-      name: "Hair & Beard Combo",
-      price: 200,
-      duration: 45,
-      category: "combo",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 4,
-      name: "Kids Haircut",
-      price: 120,
-      duration: 25,
-      category: "haircut",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 5,
-      name: "Hair Coloring",
-      price: 350,
-      duration: 60,
-      category: "color",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 6,
-      name: "Facial",
-      price: 250,
-      duration: 30,
-      category: "facial",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 7,
-      name: "Hot Towel Shave",
-      price: 180,
-      duration: 35,
-      category: "beard",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-    {
-      id: 8,
-      name: "Head Massage",
-      price: 120,
-      duration: 20,
-      category: "addon",
-      image: "/placeholder.svg?height=100&width=100",
-    },
-  ]
+  const [localServices, setLocalServices] = useState<Service[]>([])
+  useEffect(() => {
+    const loadServices = async () => {
+      const snap = await getDocs(collection(db, "services"))
+      const data: Service[] = snap.docs.map((d, idx) => {
+        const s: any = d.data()
+        return {
+          id: idx + 1,
+          name: s.name || "Service",
+          price: typeof s.price === "number" ? s.price : parseFloat(s.price) || 0,
+          duration: s.duration || 0,
+          category: s.category || "",
+          image: s.image || "/placeholder.svg?height=100&width=100",
+        }
+      })
+      setLocalServices(data)
+    }
+    loadServices()
+  }, [])
 
   // Mock data for products
   const products = [
@@ -227,7 +179,7 @@ export default function POSPage() {
   const [specialRequestPrice, setSpecialRequestPrice] = useState("")
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<Partial<Service> | null>(null)
-  const [localServices, setLocalServices] = useState<Service[]>(services)
+  // localServices populated from Firestore
   const [transactions, setTransactions] = useState<{
     id: string;
     date: Date;
@@ -238,6 +190,12 @@ export default function POSPage() {
     paymentMethod: string;
   }[]>([])
   const [cashAmount, setCashAmount] = useState("")
+  const [cashError, setCashError] = useState("")
+  const [selectedBarber, setSelectedBarber] = useState("")
+  const [barberError, setBarberError] = useState("")
+  const [finishedOpen, setFinishedOpen] = useState(false)
+  const [finishedAppointments, setFinishedAppointments] = useState<any[]>([])
+  const [finishedCount, setFinishedCount] = useState(0)
 
   // Filter items based on search query and active tab
   const filteredItems =
@@ -256,6 +214,71 @@ export default function POSPage() {
   // Calculate cart totals
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const total = subtotal 
+
+  // Listen to finished services (appointments marked completed by barbers)
+  useEffect(() => {
+    const q = query(collection(db, "appointments"), where("status", "==", "completed"))
+    const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((a: any) => !a.posRecorded)
+      // sort by completedAt desc if available, else by any date field
+      items.sort((a: any, b: any) => {
+        const ad = a.completedAt?.toDate?.() ? a.completedAt.toDate().getTime() : 0
+        const bd = b.completedAt?.toDate?.() ? b.completedAt.toDate().getTime() : 0
+        return bd - ad
+      })
+      setFinishedAppointments(items)
+      setFinishedCount(items.length)
+    })
+    return () => unsub()
+  }, [])
+
+  // Add finished appointment services to current cart
+  const loadFinishedToCart = (a: any) => {
+    const newItems: {id: number; name: string; price: number; quantity: number; type: string; image?: string; isSpecialRequest: boolean }[] = []
+
+    // If appointment has an array of items/services
+    if (Array.isArray(a.items)) {
+      for (const it of a.items) {
+        const name = it.name || it.serviceName || "Service"
+        const price = typeof it.price === "number" ? it.price : parseFloat(it.price) || 0
+        const quantity = typeof it.quantity === "number" ? it.quantity : 1
+        newItems.push({ id: Date.now() + Math.floor(Math.random() * 1000), name, price, quantity, type: "services", isSpecialRequest: false })
+      }
+    } else {
+      // Fallback to single service fields on appointment
+      const name = a.serviceName || a.service || "Service"
+      const price = typeof a.price === "number" ? a.price : parseFloat(a.price) || 0
+      const quantity = 1
+      newItems.push({ id: Date.now(), name, price, quantity, type: "services", isSpecialRequest: false })
+    }
+
+    // Merge into cart (aggregate quantities by name + type)
+    setCart((prev) => {
+      const updated = [...prev]
+      for (const ni of newItems) {
+        const idx = updated.findIndex((ci) => ci.name === ni.name && ci.type === ni.type)
+        if (idx >= 0) {
+          updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + ni.quantity }
+        } else {
+          updated.push(ni)
+        }
+      }
+      return updated
+    })
+  }
+
+  // Mark a finished appointment as recorded so it disappears
+  const markFinishedRecorded = async (id: string) => {
+    try {
+      await updateDoc(doc(db, "appointments", id), { posRecorded: true })
+      toast({ title: "Marked recorded", description: "Appointment removed from Finished Services." })
+    } catch (e) {
+      console.error("Failed to mark recorded", e)
+      toast({ title: "Action failed", description: "Could not mark as recorded.", variant: "destructive" })
+    }
+  }
 
   // Add item to cart
   const addToCart = (item: { id: number; name: string; price: number; type?: string; image?: string }) => {
@@ -290,17 +313,26 @@ export default function POSPage() {
 
   // Handle payment
   const handlePayment = async () => {
+    if (!selectedBarber) {
+      setBarberError("Please select a barber.")
+      return
+    } else {
+      setBarberError("")
+    }
     if (paymentMethod === "cash") {
       const cash = parseFloat(cashAmount)
-      if (isNaN(cash) || cash < total) {
-        toast({
-          title: "Insufficient amount",
-          description: "The cash amount entered is less than the total."
-        })
+      if (isNaN(cash) || cash <= 0) {
+        setCashError("Enter a valid positive amount.")
         return
       }
+      if (cash < total) {
+        setCashError("Cash amount must be at least the total.")
+        return
+      }
+      setCashError("")
     }
     // Generate receipt data
+    const toTitle = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
     const receipt = {
       id: `REC-${Date.now().toString().slice(-6)}`,
       date: new Date(),
@@ -309,6 +341,8 @@ export default function POSPage() {
       subtotal: subtotal,
       total: total,
       paymentMethod: paymentMethod,
+      barber: selectedBarber || "",
+      barberName: toTitle(selectedBarber || "")
     }
 
     // Save to Firestore
@@ -321,6 +355,8 @@ export default function POSPage() {
         subtotal: receipt.subtotal,
         total: receipt.total,
         paymentMethod: receipt.paymentMethod,
+        barber: receipt.barber,
+        barberName: receipt.barberName,
       })
       toast({
         title: "Sale recorded successfully!",
@@ -572,11 +608,19 @@ export default function POSPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-[1920px]">
+    <div className="container mx-auto py-6 px-4 max-w-[1920px] text-sm">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h1 className="text-3xl font-bold">Point of Sale</h1>
+        <h1 className="text-2xl font-bold">Point of Sale</h1>
         <div className="flex flex-wrap gap-2">
+          <Button className="bg-green-900 flex-1 md:flex-none relative" onClick={() => setFinishedOpen((v) => !v)}>
+            Finished Services
+            {finishedCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center text-xs rounded-full bg-red-600 text-white px-2 py-0.5">
+                {finishedCount}
+              </span>
+            )}
+          </Button>
           <Button variant="outline" onClick={() => setCart([])} className="flex-1 md:flex-none">
             <Trash className="h-4 w-4 mr-2" />
             Clear Cart
@@ -588,18 +632,18 @@ export default function POSPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Products/Services Section */}
         <div className="lg:col-span-8">
-          <Card className="h-full">
-            <CardHeader className="pb-3">
+          <Card className="h-full shadow-sm">
+            <CardHeader className="pb-4">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                  <CardTitle>Products & Services</CardTitle>
-                  <CardDescription>Add items to the current transaction</CardDescription>
+                  <CardTitle className="text-lg font-semibold">Products & Services</CardTitle>
+                  <CardDescription className="text-sm text-gray-600">Add items to the current transaction</CardDescription>
                 </div>
-                <div className="relative w-full md:w-64">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <div className="relative w-full md:w-72">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
                   <Input
                     placeholder="Search items..."
-                    className="pl-8"
+                    className="pl-10 h-10 border-gray-200 focus:border-primary"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -607,7 +651,7 @@ export default function POSPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute right-0 top-0 h-9 w-9"
+                      className="absolute right-1 top-1 h-8 w-8 hover:bg-gray-100"
                       onClick={() => setSearchQuery("")}
                     >
                       <X className="h-4 w-4" />
@@ -618,68 +662,82 @@ export default function POSPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {finishedOpen && (
+                <div className="mb-6 border rounded-lg p-4 bg-green-50 border-green-200">
+                  <div className="font-semibold mb-3 text-green-800">Recently Finished Services</div>
+                  {finishedAppointments.length === 0 ? (
+                    <div className="text-sm text-green-600">No finished services yet.</div>
+                  ) : (
+                    <div className="space-y-3 max-h-64 overflow-auto pr-1">
+                      {finishedAppointments.map((a: any) => (
+                        <div key={a.id} className="flex items-center justify-between border border-green-200 rounded-lg p-3 bg-white shadow-sm">
+                          <div className="cursor-pointer flex-1" onClick={() => loadFinishedToCart(a)} title="Load to current sale">
+                            <div className="font-medium text-gray-900">{a.customerName || a.customer || a.email || "Customer"}</div>
+                            <div className="text-sm text-gray-600">
+                              {a.serviceName || a.service || "Service"}
+                              {a.time ? ` • ${a.time}` : ""}
+                              {a.date ? ` • ${a.date}` : ""}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <div className="text-xs text-gray-500 hidden sm:block">
+                              {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
+                            </div>
+                            <Button size="sm" variant="secondary" onClick={() => loadFinishedToCart(a)} className="text-xs">Add to cart</Button>
+                            <Button size="sm" variant="outline" onClick={() => markFinishedRecorded(a.id)} className="text-xs">Mark recorded</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <Tabs defaultValue="services" value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="mb-6">
-                  <TabsTrigger value="services">Services</TabsTrigger>
-                  <TabsTrigger value="products">Products</TabsTrigger>
+                <TabsList className="mb-6 bg-gray-100">
+                  <TabsTrigger value="services" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Services</TabsTrigger>
+                  <TabsTrigger value="products" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Products</TabsTrigger>
                 </TabsList>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 justify-items-center">
                   {filteredItems.map((item) => (
                     <Card
                       key={item.id}
-                      className="cursor-pointer hover:border-primary transition-colors group"
+                      className="cursor-pointer hover:shadow-lg border border-gray-200 hover:border-primary transition-all duration-200 group rounded-lg p-0 w-full max-w-[200px] h-[140px] flex flex-col"
                       onClick={() => handleCardClick(item)}
                     >
-                      <div className="aspect-square relative">
-                        <img
-                          src={item.image || "/placeholder.svg"}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {'duration' in item && (
-                            <>
-                              <Button
-                                variant="secondary"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  editService(item as Service)
-                                }}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  deleteService(item.id)
-                                }}
-                              >
-                                <Trash className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
+                      <CardContent className="flex flex-col justify-between items-center p-4 h-full">
+                        <div className="flex-1 flex flex-col justify-center items-center text-center">
+                          <div className="font-semibold text-sm text-center mb-2 w-full leading-tight line-clamp-2">{item.name}</div>
+                          <div className="flex justify-center items-center w-full">
+                            <span className="text-lg font-bold text-primary">{formatCurrency(item.price)}</span>
+                          </div>
                         </div>
-                      </div>
-                      <CardContent className="p-3">
-                        <div className="font-medium truncate">{item.name}</div>
-                        <div className="flex justify-between items-center mt-1">
-                          <span className="font-bold">{formatCurrency(item.price)}</span>
-                          {activeTab !== "services" && "stock" in item && (
-                            <span
-                              className={`text-xs ${
-                                item.stock <= 5 ? "text-red-500" : "text-green-500"
-                              }`}
+                        {'duration' in item && (
+                          <div className="flex justify-center gap-1 mt-2">
+                            <Button
+                              variant="secondary"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                editService(item as Service)
+                              }}
                             >
-                              {`${item.stock} in stock`}
-                            </span>
-                          )}
-                        </div>
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteService(item.id)
+                              }}
+                            >
+                              <Trash className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   ))}
@@ -691,53 +749,49 @@ export default function POSPage() {
 
         {/* Cart Section */}
         <div className="lg:col-span-4">
-          <Card className="h-full flex flex-col sticky top-6">
-            <CardHeader className="pb-3">
+          <Card className="h-full flex flex-col sticky top-6 shadow-sm">
+            <CardHeader className="pb-4">
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Current Sale</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-lg font-semibold">Current Sale</CardTitle>
+                  <CardDescription className="text-sm text-gray-600">
                     {cart.length} {cart.length === 1 ? "item" : "items"} in cart
                   </CardDescription>
                 </div>
-                <ShoppingCart className="h-5 w-5 text-muted-foreground" />
+                <ShoppingCart className="h-6 w-6 text-gray-400" />
               </div>
             </CardHeader>
-            <CardContent className="flex-grow overflow-auto">
+            <CardContent className="flex-grow overflow-auto px-4">
               {cart.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {cart.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between border-b pb-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0">
-                          <img
-                            src={item.image || "/placeholder.svg"}
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                          />
+                    <div key={index} className="flex items-center justify-between border border-gray-200 rounded-lg p-3 bg-gray-50">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-200 flex items-center justify-center">
+                          <ShoppingCart className="h-5 w-5 text-gray-400" />
                         </div>
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{item.name}</div>
-                          <div className="text-sm text-muted-foreground">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-sm truncate">{item.name}</div>
+                          <div className="text-xs text-gray-600">
                             {formatCurrency(item.price)} × {item.quantity}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <div className="flex items-center border rounded-md">
+                        <div className="flex items-center border border-gray-300 rounded-md bg-white">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 rounded-none"
+                            className="h-7 w-7 rounded-none hover:bg-gray-100"
                             onClick={() => updateQuantity(index, item.quantity - 1)}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
-                          <span className="w-8 text-center">{item.quantity}</span>
+                          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 rounded-none"
+                            className="h-7 w-7 rounded-none hover:bg-gray-100"
                             onClick={() => updateQuantity(index, item.quantity + 1)}
                           >
                             <Plus className="h-3 w-3" />
@@ -746,43 +800,44 @@ export default function POSPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-500"
+                          className="h-7 w-7 text-red-500 hover:bg-red-50"
                           onClick={() => removeFromCart(index)}
                         >
-                          <Trash className="h-4 w-4" />
+                          <Trash className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full py-8">
-                  <ShoppingCart className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground text-center">
-                    Your cart is empty. Add products or services to begin.
+                <div className="flex flex-col items-center justify-center h-full py-12">
+                  <ShoppingCart className="h-16 w-16 text-gray-300 mb-4" />
+                  <p className="text-gray-500 text-center text-sm">
+                    Your cart is empty.<br />
+                    Add products or services to begin.
                   </p>
                 </div>
               )}
             </CardContent>
-            <CardFooter className="flex-shrink-0 border-t pt-4">
+            <CardFooter className="flex-shrink-0 border-t border-gray-200 pt-4 px-4">
               <div className="w-full space-y-4">
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span>Subtotal</span>
-                    <span>{formatCurrency(subtotal)}</span>
+                    <span className="text-gray-600">Subtotal</span>
+                    <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-lg">
+                  <div className="flex justify-between font-bold text-lg border-t border-gray-200 pt-2">
                     <span>Total</span>
-                    <span>{formatCurrency(total)}</span>
+                    <span className="text-primary">{formatCurrency(total)}</span>
                   </div>
                 </div>
                 <Button 
                   disabled={cart.length === 0} 
                   onClick={() => setIsPaymentDialogOpen(true)}
-                  className="w-full"
+                  className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-medium"
                 >
                   <CreditCard className="h-4 w-4 mr-2" />
-                  Payment
+                  Process Payment
                 </Button>
               </div>
             </CardFooter>
@@ -793,64 +848,96 @@ export default function POSPage() {
       {/* Customer Selection Dialog */}
 
       {/* Payment Dialog */}
-      <Dialog open={isPaymentDialogOpen} onOpenChange={open => { setIsPaymentDialogOpen(open); if (!open) setCashAmount("") }}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Payment</DialogTitle>
-            <DialogDescription>Complete the transaction.</DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="space-y-4">
-              <div className="p-4 bg-muted rounded-md">
-                <div className="flex justify-between mb-2">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(subtotal)}</span>
-                </div>
-                <Separator className="my-2" />
-                <div className="flex justify-between font-bold">
-                  <span>Total</span>
-                  <span>{formatCurrency(total)}</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="payment-method">Payment Method</Label>
-                <Select defaultValue="cash" onValueChange={setPaymentMethod}>
-                  <SelectTrigger id="payment-method">
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="gcash">GCash</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {paymentMethod === "cash" && (
-                <div className="space-y-2">
-                  <Label htmlFor="cash-amount">Cash Amount</Label>
-                  <Input
-                    id="cash-amount"
-                    type="number"
-                    placeholder="Enter amount received"
-                    value={cashAmount}
-                    onChange={e => setCashAmount(e.target.value)}
-                    min={total}
-                  />
-                </div>
-              )}
-
-              
-            </div>
+      <Dialog open={isPaymentDialogOpen} onOpenChange={open => { 
+  setIsPaymentDialogOpen(open); 
+  if (!open) setCashAmount(""); 
+}}>
+  <DialogContent className="sm:max-w-[425px]">
+    <DialogHeader>
+      <DialogTitle>Payment</DialogTitle>
+      <DialogDescription>Complete the transaction.</DialogDescription>
+    </DialogHeader>
+    <div className="py-4">
+      <div className="space-y-4">
+        <div className="p-4 bg-muted rounded-md">
+          <div className="flex justify-between mb-2">
+            <span>Subtotal</span>
+            <span>{formatCurrency(subtotal)}</span>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handlePayment}>Complete Payment</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <Separator className="my-2" />
+          <div className="flex justify-between font-bold">
+            <span>Total</span>
+            <span>{formatCurrency(total)}</span>
+          </div>
+        </div>
+
+        {/* Barber Selection */}
+        <div className="space-y-2">
+          <Label htmlFor="barber">Select Barber</Label>
+          <Select onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
+            <SelectTrigger id="barber">
+              <SelectValue placeholder="Choose a barber" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="jayboy">Jayboy</SelectItem>
+              <SelectItem value="noel">Noel</SelectItem>
+              <SelectItem value="abel">Abel</SelectItem>
+            </SelectContent>
+          </Select>
+          {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
+        </div>
+
+        {/* Payment Method */}
+        <div className="space-y-2">
+          <Label htmlFor="payment-method">Payment Method</Label>
+          <Select defaultValue="cash" onValueChange={setPaymentMethod}>
+            <SelectTrigger id="payment-method">
+              <SelectValue placeholder="Select payment method" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="cash">Cash</SelectItem>
+              <SelectItem value="gcash">GCash</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {paymentMethod === "cash" && (
+          <div className="space-y-2">
+            <Label htmlFor="cash-amount">Cash Amount</Label>
+            <Input
+              id="cash-amount"
+              type="number"
+              placeholder="Enter amount received"
+              value={cashAmount}
+              onChange={e => {
+                const val = e.target.value
+                setCashAmount(val)
+                const cash = parseFloat(val)
+                if (val === "") {
+                  setCashError("")
+                } else if (isNaN(cash) || cash <= 0) {
+                  setCashError("Enter a valid positive amount.")
+                } else if (cash < total) {
+                  setCashError("Cash amount must be at least the total.")
+                } else {
+                  setCashError("")
+                }
+              }}
+            />
+            {cashError && <div className="text-red-600 text-sm">{cashError}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+    <DialogFooter>
+      <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+        Cancel
+      </Button>
+      <Button onClick={handlePayment}>Complete Payment</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
 
       {/* Receipt Dialog */}
       <Dialog open={isReceiptDialogOpen} onOpenChange={setIsReceiptDialogOpen}>

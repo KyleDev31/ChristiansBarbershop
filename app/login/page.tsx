@@ -44,8 +44,8 @@ export default function LoginPage() {
       const userData = userDoc.data()
 
       toast.success("Logged in successfully")
-      
-      if (userData?.role === 'admin') {
+
+      if (userData?.role === 'admin') {        
         router.push('/admin/dashboard')
       } else {
         router.push("/") // Redirect to home for non-admin users
@@ -70,7 +70,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="container py-10 flex justify-center">
+    <div className="min-h-screen flex items-center justify-center py-10">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
           <Scissors className="h-12 w-12 mb-2" />

@@ -104,7 +104,7 @@ export default function AdminLayout({
             <Button variant="outline" className="w-full justify-start" asChild>
               <Link href="/">
                 <LogOut className="h-4 w-4 mr-2" />
-                Back to Site
+                Exit Admin Panel
               </Link>
             </Button>
           </div>

@@ -13,7 +13,7 @@ import { db } from "../../lib/firebase";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { format, addMinutes, isAfter } from "date-fns";
 
-// --- Enhanced listenToQueue with validations ---
+// --- Enhanced listenToQueue with validations and user name lookup ---
 const listenToQueue = (setQueue: (queue: any[]) => void) => {
   const today = format(new Date(), "MMMM d, yyyy");
   const q = query(
@@ -25,10 +25,13 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
   const unsubscribe = onSnapshot(q, async (querySnapshot) => {
     const now = new Date();
     let queue: any[] = [];
-    
+
+    // Collect emails to fetch user profiles
+    const emailsToFetch = new Set<string>();
+
     // Process each appointment
-    for (const doc of querySnapshot.docs) {
-      const data = doc.data();
+    for (const docSnap of querySnapshot.docs) {
+      const data = docSnap.data();
 
       // Skip invalid appointments
       if (!data.email || !data.barber || !data.date || !data.status || !data.serviceName) {
@@ -38,18 +41,18 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
       // Skip non-waiting appointments
       if (data.status !== "waiting") continue;
 
-      // Get appointment time
-      const appointmentTime = data.timestamp?.toDate?.() || new Date(data.date);
-      if (isNaN(appointmentTime.getTime())) continue;
+      // Get appointment time (prefer timestamp field)
+      const appointmentTime = data.timestamp?.toDate?.() || (typeof data.time === 'string' ? new Date(`${data.date} ${data.time}`) : new Date(data.date));
+      if (!(appointmentTime instanceof Date) || isNaN(appointmentTime.getTime())) continue;
 
       // Check if appointment is past its duration (30 minutes)
       const appointmentEndTime = addMinutes(appointmentTime, 30);
       if (isAfter(now, appointmentEndTime)) {
         // Update appointment status to completed
         try {
-          await updateDoc(doc.ref, {
+          await updateDoc(docSnap.ref, {
             status: "completed",
-            completedAt: Timestamp.now()
+            completedAt: Timestamp.now(),
           });
           continue; // Skip adding to queue
         } catch (error) {
@@ -57,7 +60,7 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
         }
       }
 
-      // Skip if appointment is too old or in the future
+      // Skip if appointment is too old or too far in future
       if (
         appointmentTime < new Date(now.getTime() - 24 * 60 * 60 * 1000) ||
         appointmentTime > new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)
@@ -71,28 +74,62 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
           (q) =>
             q.email === data.email &&
             q.barber === data.barber &&
-            q.timestamp?.toDate?.().getTime?.() === appointmentTime.getTime()
+            q.appointmentTime?.getTime?.() === appointmentTime.getTime()
         )
       ) {
         continue;
       }
 
-      // Skip invalid service names
+      // Skip invalid service or barber names
       if (typeof data.serviceName !== "string" || !data.serviceName.trim()) continue;
-
-      // Skip invalid barber names
       if (typeof data.barber !== "string" || !data.barber.trim()) continue;
 
-      // Add valid appointment to queue
+      // Collect email for profile lookup
+      emailsToFetch.add(String(data.email).toLowerCase());
+
+      // Add valid appointment to queue (raw data for now)
       queue.push({
-        id: doc.id,
+        id: docSnap.id,
         ...data,
         appointmentTime,
+        fullName: data.fullName || data.customerName || null,
       });
+    }
+
+    // If we have emails, fetch user profiles to resolve full names
+    const emailArray = Array.from(emailsToFetch);
+    if (emailArray.length > 0) {
+      // Firestore 'in' supports up to 10 items per query — chunk if needed
+      const chunkSize = 10;
+      const nameMap: Record<string, string> = {};
+
+      for (let i = 0; i < emailArray.length; i += chunkSize) {
+        const chunk = emailArray.slice(i, i + chunkSize);
+        try {
+          const usersQ = query(collection(db, "users"), where("email", "in", chunk));
+          const usersSnap = await getDocs(usersQ);
+          usersSnap.docs.forEach((u) => {
+            const d: any = u.data();
+            const emailKey = (d.email || "").toString().toLowerCase();
+            if (emailKey) {
+              nameMap[emailKey] = d.fullName || d.displayName || d.name || "";
+            }
+          });
+        } catch (err) {
+          console.error("Failed to fetch user profiles for queue:", err);
+        }
+      }
+
+      // Attach resolved full names to queue items
+      queue = queue.map((item) => ({
+        ...item,
+        fullName: item.fullName || nameMap[String(item.email).toLowerCase()] || null,
+      }));
     }
 
     // Sort queue by appointment time
     queue = queue.sort((a, b) => a.appointmentTime.getTime() - b.appointmentTime.getTime());
+
     setQueue(queue);
   });
 
@@ -188,15 +225,15 @@ const QueueList = ({ queue, filter }: { queue: any[]; filter?: (customer: any) =
         {index > 0 && <Separator className="my-4" />}
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-medium">{customer.email}</div>
+            <div className="font-medium">{customer.fullName || customer.customerName || customer.email}</div>
             <div className="text-sm text-muted-foreground">
-              {customer.service} {customer.barber && `with ${customer.barber}`}
+              { (customer.serviceName || customer.service || "") }{customer.barber && ` with ${customer.barber}`}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">
-              {customer.estimatedWait === 0 ? "In progress" : `${customer.estimatedWait} min wait`}
+              {customer.estimatedWait === 0 ? "In progress" : `${customer.estimatedWait || 0} min wait`}
             </span>
           </div>
         </div>
@@ -205,63 +242,52 @@ const QueueList = ({ queue, filter }: { queue: any[]; filter?: (customer: any) =
   </div>
 );
 
-const QueueTabs = ({ queue }: { queue: any[] }) => (
-  <Tabs defaultValue="all" className="mt-6">
-    <TabsList className="grid w-full grid-cols-4">
-      <TabsTrigger value="all">All</TabsTrigger>
-      <TabsTrigger value="JayBoy">JayBoy</TabsTrigger>
-      <TabsTrigger value="Abel">Abel</TabsTrigger>
-      <TabsTrigger value="Noel">Noel</TabsTrigger>
-    </TabsList>
-    <TabsContent value="all" className="mt-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Current Queue</CardTitle>
-          <CardDescription>All customers currently in queue</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <QueueList queue={queue} />
-        </CardContent>
-      </Card>
-    </TabsContent>
-    <TabsContent value="christian" className="mt-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Christian's Queue</CardTitle>
-          <CardDescription>Customers waiting for Christian</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <QueueList queue={queue} filter={(customer) => customer.barber === "Christian Smith"} />
-        </CardContent>
-      </Card>
-    </TabsContent>
-    <TabsContent value="michael" className="mt-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Michael's Queue</CardTitle>
-          <CardDescription>Customers waiting for Michael</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <QueueList queue={queue} filter={(customer) => customer.barber === "Michael Johnson"} />
-        </CardContent>
-      </Card>
-    </TabsContent>
-    <TabsContent value="others" className="mt-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Other Barbers' Queues</CardTitle>
-          <CardDescription>Customers waiting for other barbers</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <QueueList
-            queue={queue}
-            filter={(customer) => customer.barber !== "Christian Smith" && customer.barber !== "Michael Johnson"}
-          />
-        </CardContent>
-      </Card>
-    </TabsContent>
-  </Tabs>
-);
+// Utility to get unique barbers from the queue
+const getUniqueBarbers = (queue: any[]) => {
+  const barbers = queue.map((q) => q.barber).filter(Boolean);
+  return Array.from(new Set(barbers));
+};
+
+const QueueTabs = ({ queue }: { queue: any[] }) => {
+  const barbers = getUniqueBarbers(queue);
+
+  return (
+    <Tabs defaultValue="all" className="mt-6">
+      <TabsList className={`grid w-full grid-cols-${barbers.length + 1}`}>
+        <TabsTrigger value="all">All</TabsTrigger>
+        {barbers.map((barber) => (
+          <TabsTrigger key={barber} value={barber}>
+            {barber}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      <TabsContent value="all" className="mt-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Queue</CardTitle>
+            <CardDescription>All customers currently in queue</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <QueueList queue={queue} />
+          </CardContent>
+        </Card>
+      </TabsContent>
+      {barbers.map((barber) => (
+        <TabsContent key={barber} value={barber} className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>{barber}'s Queue</CardTitle>
+              <CardDescription>Customers waiting for {barber}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <QueueList queue={queue} filter={(customer) => customer.barber === barber} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+};
 
 // Get today's date in the same format as your booking (e.g., "May 24, 2025")
 const today = format(new Date(), "MMMM d, yyyy");
@@ -307,7 +333,7 @@ export default function QueuePage() {
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUserEmail(user?.email || null);
+      setUserEmail(user?.displayName || "user");
     });
     return () => unsubscribe();
   }, []);

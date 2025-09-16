@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSearchParams } from "next/navigation"
@@ -10,10 +10,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SiteHeader } from "@/components/site-header"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { collection, doc, getDoc, query, where, getDocs, orderBy, Timestamp, updateDoc, deleteDoc } from "firebase/firestore"
+import { collection, doc, getDoc, query, where, getDocs, orderBy, Timestamp, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { onAuthStateChanged, getAuth } from "firebase/auth"
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage"
+// switched profile image upload to local API instead of Firebase Storage
 
 interface Appointment {
   id: string
@@ -111,31 +111,41 @@ export default function ProfilePage() {
 
   // Fetch appointments
   useEffect(() => {
-    const fetchAppointments = async () => {
-      if (!userEmail) return
-      setIsLoadingAppointments(true)
-      try {
-        const appointmentsRef = collection(db, "appointments")
-        const q = query(
-          appointmentsRef,
-          where("email", "==", userEmail)
-        )
-        const querySnapshot = await getDocs(q)
-        const appointmentsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Appointment[]
-        setAppointments(appointmentsData)
-      } catch (error) {
-        console.error("Failed to fetch appointments:", error)
-      } finally {
-        setIsLoadingAppointments(false)
+    // Use onSnapshot so the UI updates in real-time when barbers mark appointments done
+    if (!userEmail) return
+    setIsLoadingAppointments(true)
+    const appointmentsRef = collection(db, "appointments")
+    const q = query(appointmentsRef, where("email", "==", userEmail))
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const appointmentsData = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) })) as Appointment[]
+
+      // detect transitions from waiting -> completed
+      const prev = prevStatuses.current || {}
+      const becameCompleted = appointmentsData.find(a => prev[a.id] === 'waiting' && a.status === 'completed')
+
+      // update the prevStatuses map
+      const updatedMap: Record<string, Appointment['status']> = {}
+      appointmentsData.forEach(a => { updatedMap[a.id] = a.status })
+      prevStatuses.current = updatedMap
+
+      setAppointments(appointmentsData)
+      setIsLoadingAppointments(false)
+
+      if (becameCompleted) {
+        // switch user to History tab so they can rebook
+        setActiveTab('history')
       }
-    }
-    if (userEmail) {
-      fetchAppointments()
-    }
+    }, (err) => {
+      console.error('Failed to listen for appointments:', err)
+      setIsLoadingAppointments(false)
+    })
+
+    return () => unsubscribe()
   }, [userEmail])
+
+  // track previous statuses to detect transitions
+  const prevStatuses = useRef<Record<string, Appointment['status']>>({})
 
   // Filter appointments
   const upcomingAppointments = appointments.filter(apt => apt.status === 'waiting')
@@ -214,6 +224,12 @@ export default function ProfilePage() {
     setShowEditDialog(false);
   };
 
+  const isValidPhilippinePhone = (phone: string) => {
+  // Accepts: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX (13 digits)
+  const regex = /^(?:\+639\d{9}|09\d{9})$/;
+  return regex.test(phone);
+};
+
   return (
     <div className="container py-10 ml-4">
         <div className="sticky top-0 z-50 bg-white bg-opacity-30 backdrop-blur-md rounded-lg mb-6">
@@ -223,62 +239,70 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Profile Information */}
-        <Card className="lg:col-span-1">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-start">
-              <CardTitle>Personal Information</CardTitle>
-              <Button variant="ghost" size="icon" onClick={openEditDialog}>
-                <Edit className="h-4 w-4" />
-                <span className="sr-only">Edit profile</span>
-              </Button>
+     <Card className="lg:col-span-1">
+  <CardHeader className="pb-2">
+    <div className="flex justify-between items-start">
+      <CardTitle>Personal Information</CardTitle>
+      <Button variant="ghost" size="icon" onClick={openEditDialog}>
+        <Edit className="h-4 w-4" />
+        <span className="sr-only">Edit profile</span>
+      </Button>
+    </div>
+  </CardHeader>
+  <CardContent className="pt-4">
+    {loadingUser ? (
+      <div className="flex justify-center items-center h-32">Loading...</div>
+    ) : userData ? (
+      <>
+        {/* Validation Check */}
+        {(!userData.fullName || !userData.phone || !isValidPhilippinePhone(userData.phone)) ? (
+          <div className="text-center text-red-500 font-medium">
+            ⚠ Please update your profile with a valid full name and Philippine phone number.
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col items-center mb-6">
+              <div className="relative w-24 h-24 rounded-full overflow-hidden mb-4">
+                <Image
+                  src={userData.profileImage}
+                  alt={userData.fullName}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <h2 className="text-xl font-semibold">{userData.fullName}</h2>
+              <p className="text-muted-foreground">Member since {userData.createdAt}</p>
             </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            {loadingUser ? (
-              <div className="flex justify-center items-center h-32">Loading...</div>
-            ) : userData ? (
-              <div className="flex flex-col items-center mb-6">
-                <div className="relative w-24 h-24 rounded-full overflow-hidden mb-4">
-                  <Image
-                    src={userData.profileImage}
-                    alt={userData.fullName}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-                <h2 className="text-xl font-semibold">{userData.fullName}</h2>
-                <p className="text-muted-foreground">Member since {userData.createdAt}</p>
-              </div>
-            ) : (
-              <div className="text-center text-muted-foreground">No user data found.</div>
-            )}
 
-            {userData && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Email</p>
-                    <p>{userData.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Phone className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Phone</p>
-                    <p>{userData.phone}</p>
-                  </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Email</p>
+                  <p>{userData.email}</p>
                 </div>
               </div>
-            )}
-          </CardContent>
-          <CardFooter>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/recommendations">Get Haircut Recommendations</Link>
-            </Button>
-          </CardFooter>
-        </Card>
-
+              <div className="flex items-center gap-3">
+                <Phone className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Phone</p>
+                  <p>{userData.phone}</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </>
+    ) : (
+      <div className="text-center text-muted-foreground">No user data found.</div>
+    )}
+  </CardContent>
+  <CardFooter>
+    <Button asChild variant="outline" className="w-full">
+      <Link href="/recommendations">Get Haircut Recommendations</Link>
+    </Button>
+  </CardFooter>
+</Card>
         {/* Appointments and History */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -486,20 +510,22 @@ export default function ProfilePage() {
                   type="file"
                   accept="image/*"
                   onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file || !authSession?.user?.uid) return;
-                    setUploading(true);
-                    setUploadError(null);
+                    const file = e.target.files?.[0]
+                    if (!file || !authSession?.user?.uid) return
+                    setUploading(true)
+                    setUploadError(null)
                     try {
-                      const storage = getStorage();
-                      const fileRef = storageRef(storage, `profileImages/${authSession.user.uid}`);
-                      await uploadBytes(fileRef, file);
-                      const url = await getDownloadURL(fileRef);
-                      setEditProfileImage(url);
+                      const form = new FormData()
+                      form.append("file", file)
+                      form.append("folder", "profiles")
+                      const res = await fetch("/api/upload-cloudinary", { method: "POST", body: form })
+                      if (!res.ok) throw new Error("Upload failed")
+                      const data = await res.json()
+                      setEditProfileImage(data.url)
                     } catch (err) {
-                      setUploadError("Failed to upload image.");
+                      setUploadError("Failed to upload image.")
                     } finally {
-                      setUploading(false);
+                      setUploading(false)
                     }
                   }}
                   disabled={uploading}

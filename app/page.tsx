@@ -1,25 +1,31 @@
 import Link from "next/link"
-import { ChevronRight, MapPin, StarIcon } from "lucide-react"
+import { ChevronRight, Icon, MapPin, StarIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import HeroSection from "@/components/hero-section"
 import ServiceCard from "@/components/service-card"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore"
+import { collection, getDocs, query, where, limit } from "firebase/firestore"
 import { Suspense } from "react"
 import { db } from "@/lib/firebase"
 
 export async function getRecentFeedbacks(limitCount: number = 3): Promise<Feedback[]> {
   try {
     const feedbacksRef = collection(db, "feedback")
-    const q = query(feedbacksRef, orderBy("date", "desc"), limit(limitCount))
+    // Only featured feedbacks; sort client-side to avoid composite index requirement
+    const q = query(feedbacksRef, where("featured", "==", true), limit(20))
     const querySnapshot = await getDocs(q)
     
-    return querySnapshot.docs.map(doc => ({
+    const items = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
     })) as Feedback[]
+
+    // Sort by date desc on client and enforce limit
+    return items
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, limitCount)
   } catch (error) {
     console.error("Error fetching feedbacks:", error)
     return []
@@ -32,16 +38,17 @@ export interface Feedback {
   rating: number
   comment: string
   date: string
+  featured?: boolean
 }
 
 async function FeedbackSection() {
   const feedbacks = await getRecentFeedbacks()
 
   return (
-    <section className="mb-10">
+    <section className="mb-16">
       <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold mb-2">Customer Feedback</h2>
-        <p className="text-muted-foreground">What our customers say about us</p>
+        <h2 className="text-2xl font-bold mb-2">Featured Feedback</h2>
+        <p className="text-muted-foreground">What our customers love the most</p>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -87,27 +94,31 @@ export default function HomePage() {
   const services = [
     {
       id: 1,
-      name: "Christian's Haircut w/ Blow Dry",
+      name: "👑 Christian's Haircut w/ Blow Dry",
       price: 120,
       image: "/placeholder.svg?height=100&width=100",
+      description: "Get a fresh haircut styled to perfection with a professional blow dry finish for a polished look.",
     },
     {
       id: 2,
-      name: "Christian's Shave",
+      name: "👑 Christian's Shave",
       price: 80,
       image: "/placeholder.svg?height=100&width=100",
+      description: "Experience a classic shave with precision and care, leaving your skin smooth and refreshed",
     },
     {
       id: 3,
-      name: "Christian's Haircut w/ Shampoo",
+      name: "👑 Christian's Haircut w/ Shampoo",
       price: 160,
       image: "/placeholder.svg?height=100&width=100",
+      description: "Get a stylish haircut with a refreshing shampoo wash included, leaving you looking sharp",
     },
     {
       id: 4,
-      name: "Shave + Towel",
+      name: "👑 Shave + Towel",
       price: 130,
       image: "/placeholder.svg?height=100&width=100",
+      description: "Experience the ultimate grooming with our Shave + Towel service, featuring a precision shave followed by a soothing hot towel treatment for refreshed skin.",
     },
   ]
 
@@ -117,29 +128,59 @@ export default function HomePage() {
               <SiteHeader />
         </div>
       <HeroSection />
-      <main className="flex-1 container px-4 py-8 ml-4">
-        <section className="mb-10">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold">Our Services</h2>
-            <Link href="/services" className="text-sm text-primary flex items-center">
-              View all <ChevronRight className="h-4 w-4 ml-1" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((service) => (
-              <ServiceCard key={service.id} service={service} />
-            ))}
-          </div>
-        </section>
+      <main className="flex-1 container mx-auto px-4 py-8 max-w-7xl">
+       <section className="mb-16">
+    {/* Header */}
+    <div className="text-center mb-8">
+      <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2">
+        ✨ Our Services
+      </h2>
+      <p className="text-gray-500 text-sm mb-4">
+        Fresh cuts, sharp styles, and vibes made for you
+      </p>
+      <Link
+        href="/services"
+        className="inline-flex items-center text-sm text-primary hover:underline hover:text-primary/80 transition"
+      >
+        View all <ChevronRight className="h-4 w-4 ml-1" />
+      </Link>
+    </div>
 
-        <section className="mb-10">
-          <h2 className="text-2xl font-bold mb-6">Our Senior Barbers</h2>
+    {/* Services Grid */}
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+  {services.map((service) => (
+    <div
+      key={service.id}
+      className="group relative rounded-2xl border-2 border-yellow-500 bg-white p-6 
+                 shadow-sm hover:shadow-lg hover:border-yellow-600 
+                 transition-all duration-200 cursor-pointer"
+    >
+      {/* Title */}
+      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-yellow-600 transition">
+        {service.name}
+      </h3>
+
+      {/* Short Description */}
+      <p className="text-sm text-gray-600 mt-2">
+        {service.description}
+      </p>
+    </div>
+  ))}
+</div>
+
+  </section>
+
+        <section className="mb-16">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 mb-2">💇🏻 Our Senior Barbers</h2>
+            <p className="text-gray-500 text-sm">Meet our experienced team of professional barbers</p>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
               <div className="aspect-square relative overflow-hidden">
                 <img
-                  src="/placeholder.svg?height=300&width=300"
-                  alt="John Doe"
+                  src="/JayBoy.jpg"
+                  alt="JayBoy"
                   className="object-cover w-full h-full"
                 />
               </div>
@@ -163,8 +204,8 @@ export default function HomePage() {
             <Card>
               <div className="aspect-square relative overflow-hidden">
                 <img
-                  src="/placeholder.svg?height=300&width=300"
-                  alt="Mike Smith"
+                  src="/abel.jpg?height=300&width=300"
+                  alt="Abel"
                   className="object-cover w-full h-full"
                 />
               </div>
@@ -188,8 +229,8 @@ export default function HomePage() {
             <Card>
               <div className="aspect-square relative overflow-hidden">
                 <img
-                  src="/placeholder.svg?height=300&width=300"
-                  alt="Alex Johnson"
+                  src="/noel.jpg"
+                  alt="Noel"
                   className="object-cover w-full h-full"
                 />
               </div>
@@ -212,17 +253,17 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="mb-10 rounded-lg overflow-hidden border">
-          <div className="bg-background p-6">
-            <div className="flex items-start gap-3 mb-4">
-              <MapPin className="h-6 w-6 text-primary mt-1" />
-              <div>
-                <h2 className="text-2xl font-bold">Find Us</h2>
-                <p className="text-muted-foreground">123 Main Street, Nabunturan, Davao de Oro</p>
-                <p className="text-muted-foreground">Open 8am to 5pm, Monday to Saturday</p>
-              </div>
+        <section className="mb-16 rounded-lg overflow-hidden border">
+          <div className="bg-background p-6 text-center">
+            <div className="flex justify-center mb-4">
+              <MapPin className="h-6 w-6 text-primary" />
             </div>
-            <div className="flex gap-4">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold mb-2">Find Us</h2>
+              <p className="text-muted-foreground mb-1">123 Main Street, Nabunturan, Davao de Oro</p>
+              <p className="text-muted-foreground">Open 8am to 5pm, Monday to Saturday</p>
+            </div>
+            <div className="flex justify-center gap-4">
               <Button asChild size="sm" variant="outline">
                 <a href="https://maps.app.goo.gl/gSPtyUGmvJB7r4cYA" target="_blank" rel="noopener noreferrer">
                   Get Directions
@@ -233,13 +274,15 @@ export default function HomePage() {
               </Button>
             </div>
           </div>
-          <div className=" relative">
-          <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3954.7565794177467!2d125.9655472!3d7.6014485999999994!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x32fc03795dfccc81%3A0x3f3fd0228bd48c17!2sChristian%E2%80%99s%20Barbershop%20Est.%202011!5e0!3m2!1sen!2sph!4v1745675298591!5m2!1sen!2sph" 
-          width="1500" 
-          height="450" 
-          loading="lazy" >
-          </iframe>
-</div>
+          <div className="relative">
+            <iframe 
+              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3954.7565794177467!2d125.9655472!3d7.6014485999999994!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x32fc03795dfccc81%3A0x3f3fd0228bd48c17!2sChristian%E2%80%99s%20Barbershop%20Est.%202011!5e0!3m2!1sen!2sph!4v1745675298591!5m2!1sen!2sph" 
+              className="w-full h-[450px] border-0" 
+              loading="lazy"
+              title="Christian's Barbershop Location"
+            >
+            </iframe>
+          </div>
         </section>
 
         <FeedbackSection />
