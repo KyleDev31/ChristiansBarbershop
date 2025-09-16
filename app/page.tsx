@@ -179,7 +179,7 @@ export default function HomePage() {
             <Card>
               <div className="aspect-square relative overflow-hidden">
                 <img
-                  src="/JayBoy.jpg"
+                  src="/jayboy.jpg"
                   alt="JayBoy"
                   className="object-cover w-full h-full"
                 />
