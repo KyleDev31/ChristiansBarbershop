@@ -65,54 +65,61 @@ export default function ServicesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <SiteHeader/>
-      <div className="container mx-auto py-10 px-4 sm:px-8 max-w-7xl">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold tracking-tight mb-4 text-gray-900">Our Services</h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+      <SiteHeader />
+      <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8 max-w-7xl">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3 sm:mb-4 text-gray-900">Our Services</h1>
+          <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto">
             Professional barbering services tailored to your style and needs
           </p>
         </div>
 
         <Tabs defaultValue="haircut" className="w-full">
-          <div className="flex justify-center mb-10">
-            <TabsList className="grid grid-cols-2 md:grid-cols-3 w-full max-w-2xl bg-white shadow-sm">
-              {CATEGORY_TABS.map(tab => (
-                <TabsTrigger key={tab.value} value={tab.value} className="font-medium">{tab.label}</TabsTrigger>
-              ))}
-            </TabsList>
+          <div className="flex justify-center mb-6 sm:mb-10">
+            <div className="w-full max-w-3xl">
+              {/* Make tabs horizontally scrollable on small screens */}
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <TabsList className="inline-flex gap-2 px-4 sm:px-0 bg-white shadow-sm rounded-lg">
+                  {CATEGORY_TABS.map(tab => (
+                    <TabsTrigger key={tab.value} value={tab.value} className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 font-medium">{tab.label}</TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </div>
           </div>
 
-        {CATEGORY_TABS.map(tab => (
-          <TabsContent key={tab.value} value={tab.value} className="mt-0">
-            {loading ? (
-              <div className="text-center py-10 text-muted-foreground">Loading...</div>
-            ) : (
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 justify-items-center">
-                {(grouped[tab.value] || []).length > 0 ? (
-                  grouped[tab.value].map(service => (
-                    <ServiceCard key={service.id} service={service} />
-                  ))
-                ) : (
-                  <div className="col-span-full text-center text-gray-500 py-12">
-                    <div className="text-6xl mb-4">✂️</div>
-                    <p className="text-lg">No services found in this category.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </TabsContent>
-        ))}
-      </Tabs>
+          {CATEGORY_TABS.map(tab => (
+            <TabsContent key={tab.value} value={tab.value} className="mt-0">
+              {loading ? (
+                <div className="text-center py-10 text-muted-foreground">Loading...</div>
+              ) : (
+                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 justify-items-center">
+                  {(grouped[tab.value] || []).length > 0 ? (
+                    grouped[tab.value].map(service => (
+                      <ServiceCard key={service.id} service={service} />
+                    ))
+                  ) : (
+                    <div className="col-span-full text-center text-gray-500 py-12">
+                      <div className="text-5xl sm:text-6xl mb-4">✂️</div>
+                      <p className="text-base sm:text-lg">No services found in this category.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
 
-        <div className="mt-20 text-center bg-white rounded-2xl p-8 shadow-sm border">
-          <h2 className="text-3xl font-bold mb-4 text-gray-900">Ready for a fresh look?</h2>
-          <p className="text-gray-600 mb-8 max-w-2xl mx-auto text-lg">
+        <div className="mt-12 sm:mt-20 text-center bg-white rounded-2xl p-6 sm:p-8 shadow-sm border">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 sm:mb-4 text-gray-900">Ready for a fresh look?</h2>
+          <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 max-w-2xl mx-auto">
             Book your appointment today and experience the best barbering service in town.
           </p>
-          <Button asChild size="lg" className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-3 text-lg font-semibold">
-            <Link href="/booking">Book an Appointment</Link>
-          </Button>
+          <div className="flex justify-center">
+            <Button asChild size="lg" className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 sm:px-8 py-2 sm:py-3 text-sm sm:text-lg font-semibold rounded-md">
+              <Link href="/booking">Book an Appointment</Link>
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -147,24 +154,24 @@ function ServiceCard({ service }: ServiceProps) {
   const iconColor = colorMap[service.category] || "bg-gray-100 text-gray-600"
 
   return (
-    <Card className="overflow-hidden flex flex-col h-full border border-gray-200 shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-xl bg-white max-w-sm w-full">
-      <CardHeader className="pb-4 pt-6 px-6 text-center">
-        <div className="flex justify-center mb-4">
-          <div className={`p-4 rounded-full ${iconColor} transition-transform hover:scale-110`}>
-            <Icon className="h-8 w-8" />
+    <Card className="overflow-hidden flex flex-col h-full border border-gray-200 shadow-sm transition-all duration-300 hover:scale-[1.02] hover:shadow-xl bg-white w-full max-w-xs sm:max-w-sm">
+      <CardHeader className="pb-3 pt-5 px-4 sm:px-6 text-center">
+        <div className="flex justify-center mb-3">
+          <div className={`p-3 sm:p-4 rounded-full ${iconColor} transition-transform hover:scale-110`}>
+            <Icon className="h-6 w-6 sm:h-8 sm:w-8" />
           </div>
         </div>
-        <CardTitle className="text-lg font-bold text-gray-900 mb-2">{service.name}</CardTitle>
+        <CardTitle className="text-base sm:text-lg font-bold text-gray-900 mb-1 sm:mb-2">{service.name}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-grow px-6 pb-4 pt-0 text-center">
-        <p className="text-gray-600 text-sm leading-relaxed mb-4">{service.description}</p>
+      <CardContent className="flex-grow px-4 sm:px-6 pb-3 pt-0 text-center">
+        <p className="text-gray-600 text-sm sm:text-sm leading-relaxed mb-3 sm:mb-4 line-clamp-3">{service.description}</p>
         <div className="flex justify-center items-center">
-          <span className="text-2xl font-bold text-yellow-600">₱{service.price}</span>
+          <span className="text-xl sm:text-2xl font-bold text-yellow-600">₱{service.price}</span>
         </div>
       </CardContent>
-      <CardFooter className="px-6 pb-6 pt-0">
+      <CardFooter className="px-4 sm:px-6 pb-4 pt-0">
         <div className="w-full">
-          <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium">
+          <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium text-sm sm:text-base py-2 sm:py-2">
             <Link href="/booking">Book Now</Link>
           </Button>
         </div>

@@ -196,6 +196,7 @@ export default function POSPage() {
   const [finishedOpen, setFinishedOpen] = useState(false)
   const [finishedAppointments, setFinishedAppointments] = useState<any[]>([])
   const [finishedCount, setFinishedCount] = useState(0)
+  const [addedFinishedAppointmentIds, setAddedFinishedAppointmentIds] = useState<string[]>([])
 
   // Filter items based on search query and active tab
   const filteredItems =
@@ -254,7 +255,7 @@ export default function POSPage() {
       newItems.push({ id: Date.now(), name, price, quantity, type: "services", isSpecialRequest: false })
     }
 
-    // Merge into cart (aggregate quantities by name + type)
+  // Merge into cart (aggregate quantities by name + type)
     setCart((prev) => {
       const updated = [...prev]
       for (const ni of newItems) {
@@ -265,8 +266,56 @@ export default function POSPage() {
           updated.push(ni)
         }
       }
+      // Attempt to auto-detect barber from appointment and set selectedBarber
+      // Only set if admin hasn't manually selected a barber yet
+      const normalizeBarberValue = (n: string) => n.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
+      try {
+        if (!selectedBarber) {
+          if (a.barber) {
+            const barberName = typeof a.barber === 'string' ? a.barber : (a.barber.name || a.barber.displayName || a.barber.fullName || '')
+            if (barberName) setSelectedBarber(normalizeBarberValue(barberName))
+          } else if (a.barberName) {
+            setSelectedBarber(normalizeBarberValue(a.barberName))
+          } else if (a.barberEmail || a.email) {
+            const lookupEmail = a.barberEmail || a.email
+            ;(async () => {
+              try {
+                const q = query(collection(db, 'users'), where('email', '==', lookupEmail))
+                const snaps = await getDocs(q)
+                if (!snaps.empty) {
+                  const u = snaps.docs[0].data()
+                  const name = u.displayName || u.fullName || u.name || u.email || ''
+                  if (name) setSelectedBarber(normalizeBarberValue(name))
+                }
+              } catch (e) {
+                // ignore lookup errors
+              }
+            })()
+          } else if (a.barberId) {
+            ;(async () => {
+              try {
+                const q = query(collection(db, 'users'), where('barberId', '==', a.barberId))
+                const snaps = await getDocs(q)
+                if (!snaps.empty) {
+                  const u = snaps.docs[0].data()
+                  const name = u.displayName || u.fullName || u.name || u.email || ''
+                  if (name) setSelectedBarber(normalizeBarberValue(name))
+                }
+              } catch (e) {
+                // ignore
+              }
+            })()
+          }
+        }
+      } catch (e) {
+        // ignore any errors during barber detection
+      }
       return updated
     })
+    // record that this finished appointment was added to the cart so we can mark it recorded on payment
+    if (a?.id) {
+      setAddedFinishedAppointmentIds((prev) => (prev.includes(a.id) ? prev : [...prev, a.id]))
+    }
   }
 
   // Mark a finished appointment as recorded so it disappears
@@ -373,6 +422,18 @@ export default function POSPage() {
     setIsReceiptDialogOpen(true)
     setReceiptData(receipt)
     setCashAmount("")
+    // Mark any finished appointments that were added to this cart as recorded
+    if (addedFinishedAppointmentIds.length > 0) {
+      for (const id of addedFinishedAppointmentIds) {
+        try {
+          await updateDoc(doc(db, 'appointments', id), { posRecorded: true })
+        } catch (e) {
+          console.error('Failed to mark finished appointment recorded after payment', e)
+        }
+      }
+      // clear tracked ids
+      setAddedFinishedAppointmentIds([])
+    }
   }
 
   // Handle new transaction
@@ -612,8 +673,8 @@ export default function POSPage() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">Point of Sale</h1>
-        <div className="flex flex-wrap gap-2">
-          <Button className="bg-green-900 flex-1 md:flex-none relative" onClick={() => setFinishedOpen((v) => !v)}>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+          <Button className="bg-green-900 w-full sm:w-auto" onClick={() => setFinishedOpen((v) => !v)}>
             Finished Services
             {finishedCount > 0 && (
               <span className="ml-2 inline-flex items-center justify-center text-xs rounded-full bg-red-600 text-white px-2 py-0.5">
@@ -621,7 +682,7 @@ export default function POSPage() {
               </span>
             )}
           </Button>
-          <Button variant="outline" onClick={() => setCart([])} className="flex-1 md:flex-none">
+          <Button variant="outline" onClick={() => setCart([])} className="w-full sm:w-auto">
             <Trash className="h-4 w-4 mr-2" />
             Clear Cart
           </Button>
@@ -670,7 +731,7 @@ export default function POSPage() {
                   ) : (
                     <div className="space-y-3 max-h-64 overflow-auto pr-1">
                       {finishedAppointments.map((a: any) => (
-                        <div key={a.id} className="flex items-center justify-between border border-green-200 rounded-lg p-3 bg-white shadow-sm">
+                        <div key={a.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-green-200 rounded-lg p-3 bg-white shadow-sm">
                           <div className="cursor-pointer flex-1" onClick={() => loadFinishedToCart(a)} title="Load to current sale">
                             <div className="font-medium text-gray-900">{a.customerName || a.customer || a.email || "Customer"}</div>
                             <div className="text-sm text-gray-600">
@@ -678,13 +739,20 @@ export default function POSPage() {
                               {a.time ? ` • ${a.time}` : ""}
                               {a.date ? ` • ${a.date}` : ""}
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <div className="text-xs text-gray-500 hidden sm:block">
+                            {/* show compact timestamp on mobile */}
+                            <div className="text-xs text-gray-500 block sm:hidden mt-1">
                               {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
                             </div>
-                            <Button size="sm" variant="secondary" onClick={() => loadFinishedToCart(a)} className="text-xs">Add to cart</Button>
-                            <Button size="sm" variant="outline" onClick={() => markFinishedRecorded(a.id)} className="text-xs">Mark recorded</Button>
+                          </div>
+
+                          <div className="flex items-center gap-2 mt-3 sm:mt-0 ml-0 sm:ml-4 w-full sm:w-auto">
+                            <div className="text-xs text-gray-500 hidden sm:block mr-2">
+                              {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
+                            </div>
+                            <div className="flex gap-2 flex-1 sm:flex-none">
+                              <Button size="sm" variant="secondary" onClick={() => loadFinishedToCart(a)} className="text-xs w-full sm:w-auto">Add to cart</Button>
+                              <Button size="sm" variant="outline" onClick={() => markFinishedRecorded(a.id)} className="text-xs w-full sm:w-auto">Mark recorded</Button>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -874,7 +942,7 @@ export default function POSPage() {
         {/* Barber Selection */}
         <div className="space-y-2">
           <Label htmlFor="barber">Select Barber</Label>
-          <Select onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
+          <Select value={selectedBarber} onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
             <SelectTrigger id="barber">
               <SelectValue placeholder="Choose a barber" />
             </SelectTrigger>
@@ -884,6 +952,9 @@ export default function POSPage() {
               <SelectItem value="abel">Abel</SelectItem>
             </SelectContent>
           </Select>
+          {selectedBarber && (
+            <div className="text-sm text-muted-foreground">Auto-selected: {selectedBarber}</div>
+          )}
           {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
         </div>
 

@@ -269,9 +269,6 @@ export default function HomePage() {
                   Get Directions
                 </a>
               </Button>
-              <Button asChild size="sm">
-                <Link href="/contact">Contact Us</Link>
-              </Button>
             </div>
           </div>
           <div className="relative">

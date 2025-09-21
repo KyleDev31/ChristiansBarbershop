@@ -184,41 +184,44 @@ export default function HaircutRecommendationsPage() {
 
   return (
     <>
-      <div className="container ml-8">
-        <div className="sticky top-0 z-50 bg-white bg-opacity-30 backdrop-blur-md rounded-lg mb-6">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="sticky top-0 z-50 bg-white bg-opacity-30 backdrop-blur-md rounded-lg mb-6 py-2">
           <SiteHeader />
         </div>
 
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2 mb-4">
           <Scissors className="h-6 w-6" />
-          <h1 className="text-3xl font-bold">Haircut Recommendations</h1>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Haircut Recommendations</h1>
         </div>
 
-        <p className="text-muted-foreground mb-8 max-w-3xl">
+        <p className="text-muted-foreground mb-6 sm:mb-8 max-w-3xl">
           Finding the perfect haircut starts with understanding your face shape. Select your face shape below to see our
           personalized recommendations that will enhance your features and style.
         </p>
 
-        <Tabs defaultValue="oval" value={selectedFaceShape} onValueChange={setSelectedFaceShape} className="mb-8">
-          <TabsList className="grid grid-cols-3 md:grid-cols-6 mb-8">
-            {faceShapes.map((shape) => (
-              <TabsTrigger key={shape.id} value={shape.id}>
-                {shape.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <Tabs defaultValue="oval" value={selectedFaceShape} onValueChange={setSelectedFaceShape} className="mb-6 sm:mb-8">
+          {/* Make tabs scrollable on small screens */}
+          <div className="overflow-x-auto -mx-4 sm:mx-0 mb-4">
+            <TabsList className="inline-flex gap-2 px-4 sm:px-0">
+              {faceShapes.map((shape) => (
+                <TabsTrigger key={shape.id} value={shape.id} className="whitespace-nowrap px-3 py-2 sm:px-4 sm:py-2 rounded-md">
+                  {shape.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
           {faceShapes.map((shape) => (
-            <TabsContent key={shape.id} value={shape.id} className="mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="md:col-span-1">
+            <TabsContent key={shape.id} value={shape.id} className="mt-4">
+              <div className="flex flex-col md:flex-row gap-6 mb-6">
+                <div className="md:w-1/3">
                   <Card>
                     <CardHeader>
-                      <CardTitle>{shape.name} Face Shape</CardTitle>
-                      <CardDescription>{shape.description}</CardDescription>
+                      <CardTitle className="text-lg sm:text-xl">{shape.name} Face Shape</CardTitle>
+                      <CardDescription className="text-sm sm:text-base">{shape.description}</CardDescription>
                     </CardHeader>
                     <CardContent className="flex justify-center">
-                      <div className="relative w-40 h-48">
+                      <div className="relative w-40 h-48 sm:w-44 sm:h-56">
                         <Image
                           src={shape.image || "/placeholder.svg"}
                           alt={`${shape.name} face shape`}
@@ -236,9 +239,9 @@ export default function HaircutRecommendationsPage() {
                   </Card>
                 </div>
 
-                <div className="md:col-span-2">
-                  <h2 className="text-2xl font-semibold mb-4">Recommended Haircuts</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:w-2/3">
+                  <h2 className="text-xl sm:text-2xl font-semibold mb-4">Recommended Haircuts</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {haircutRecommendations[shape.id as keyof typeof haircutRecommendations].map((haircut: Haircut) => (
                       <Card key={haircut.id} className="overflow-hidden">
                         <div className="aspect-square relative">
@@ -250,10 +253,15 @@ export default function HaircutRecommendationsPage() {
                           />
                         </div>
                         <CardContent className="p-4">
-                          <h3 className="font-medium text-lg">{haircut.name}</h3>
-                          <p className="text-sm text-muted-foreground mt-2">{haircut.description}</p>
+                          <h3 className="font-medium text-base sm:text-lg">{haircut.name}</h3>
+                          <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{haircut.description}</p>
                         </CardContent>
                         <CardFooter className="p-4 pt-0">
+                          <div className="w-full">
+                            <Button asChild size="sm" className="w-full bg-gray-900 hover:bg-gray-800 text-white">
+                              <Link href="/booking">Book</Link>
+                            </Button>
+                          </div>
                         </CardFooter>
                       </Card>
                     ))}

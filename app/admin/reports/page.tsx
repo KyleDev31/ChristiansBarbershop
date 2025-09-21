@@ -31,7 +31,7 @@ import { parseISO, isAfter, isBefore, isEqual } from "date-fns"
 
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState("sales")
-  const [dateRange, setDateRange] = useState("week")
+  const [dateRange, setDateRange] = useState("")
   const [fromDate, setFromDate] = useState(subDays(new Date(), 7))
   const [toDate, setToDate] = useState(new Date())
   const [isCalendarOpen, setIsCalendarOpen] = useState(false)
@@ -441,17 +441,7 @@ export default function ReportsPage() {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
-              <Select value={dateRange} onValueChange={handleDateRangeChange}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select date range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                  <SelectItem value="year">This Year</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Quick date-range select removed — reports use the calendar-selected range only */}
 
               {dateRange === "custom" && (
                 <div className="p-3 border-t">

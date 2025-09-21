@@ -16,7 +16,7 @@ export function MobileNav() {
     { href: "/", label: "Home" },
     { href: "/services", label: "Services" },
     { href: "/recommendations", label: "Recommendations" },
-    { href: "/book", label: "Book" },
+    { href: "/booking", label: "Book" },
     { href: "/queue", label: "Queue Status" },
     { href: "/feedback", label: "Feedback" },
   ]

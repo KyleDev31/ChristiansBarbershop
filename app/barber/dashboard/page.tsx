@@ -18,6 +18,7 @@ import {
 import { onAuthStateChanged, User } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SiteHeader } from "@/components/site-header" // added import
 import { toast } from "@/hooks/use-toast"
 import { useBarber } from '@/hooks/useBarber'
@@ -58,6 +59,9 @@ export default function BarberDashboard() {
   const [historySort, setHistorySort] = useState<'newest' | 'oldest'>('newest')
 
   const [savingProfile, setSavingProfile] = useState(false)
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'complete' | 'cancel' | null>(null)
+  const [confirmAppointmentId, setConfirmAppointmentId] = useState<string | null>(null)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -342,8 +346,10 @@ export default function BarberDashboard() {
     if (!user) return
     try {
       await updateDoc(doc(db, "appointments", id), { status: "completed", completedAt: Timestamp.fromDate(new Date()) })
+      toast({ title: "Marked completed", description: "Appointment marked as completed." })
     } catch (err) {
       console.error("Failed to mark completed", err)
+      toast({ title: "Mark failed", description: "Could not mark appointment as completed.", variant: "destructive" })
     }
   }
 
@@ -351,8 +357,37 @@ export default function BarberDashboard() {
     if (!user) return
     try {
       await updateDoc(doc(db, "appointments", id), { status: "cancelled", cancelledAt: Timestamp.fromDate(new Date()) })
+      toast({ title: "Appointment cancelled", description: "Appointment has been cancelled." })
     } catch (err) {
       console.error("Failed to cancel appointment", err)
+      toast({ title: "Cancel failed", description: "Could not cancel appointment.", variant: "destructive" })
+    }
+  }
+
+  const openConfirm = (action: 'complete' | 'cancel', id: string) => {
+    setConfirmAction(action)
+    setConfirmAppointmentId(id)
+    setConfirmDialogOpen(true)
+  }
+
+  const handleConfirmYes = async () => {
+    if (!confirmAction || !confirmAppointmentId) {
+      setConfirmDialogOpen(false)
+      return
+    }
+    try {
+      if (confirmAction === 'complete') {
+        await markCompleted(confirmAppointmentId)
+      } else {
+        await markCancelled(confirmAppointmentId)
+      }
+    } catch (err) {
+      // markCompleted/markCancelled already show toasts; just log here
+      console.error('Confirmation action failed', err)
+    } finally {
+      setConfirmDialogOpen(false)
+      setConfirmAction(null)
+      setConfirmAppointmentId(null)
     }
   }
 
@@ -584,7 +619,7 @@ export default function BarberDashboard() {
                           <Button
                             size="sm"
                             className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                            onClick={() => markCompleted(a.id)}
+                            onClick={() => openConfirm('complete', a.id)}
                             aria-label={`Mark appointment ${a.id} as done`}
                           >
                             Mark done
@@ -592,7 +627,7 @@ export default function BarberDashboard() {
                           <Button
                             size="sm"
                             className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-red-600 text-white hover:bg-red-700"
-                            onClick={() => markCancelled(a.id)}
+                            onClick={() => openConfirm('cancel', a.id)}
                             aria-label={`Cancel appointment ${a.id}`}
                           >
                             Cancel
@@ -665,6 +700,18 @@ export default function BarberDashboard() {
           </div>
         </div>
       </div>
+      <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Confirm action</DialogTitle>
+            <DialogDescription>Do you want to confirm this action?</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setConfirmDialogOpen(false)}>No</Button>
+            <Button variant="destructive" onClick={handleConfirmYes}>Yes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

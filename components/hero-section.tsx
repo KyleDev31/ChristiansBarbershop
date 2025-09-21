@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation"
 export default function HeroSection() {
   const [isLoading, setIsLoading] = useState(true)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [showQr, setShowQr] = useState(false)
+  const [qrSrc, setQrSrc] = useState('/qr.png')
   const router = useRouter()
 
   useEffect(() => {
@@ -85,16 +87,30 @@ export default function HeroSection() {
             Open 8am to 5pm, Monday to Saturday
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
-            <Button asChild size="lg" className="w-full sm:w-auto hover:bg-yellow-600">
+            <Button asChild size="lg" className="w-full sm:w-auto hover:bg-yellow-600 bg-white text-black">
               <Link href="/booking">Book Appointment</Link>
             </Button>
             <Button
               asChild
               variant="outline"
               size="lg"
-              className="w-full sm:w-auto border-white text-black hover:bg-yellow-100"
+              className="w-full sm:w-auto border-white text-black hover:bg-yellow-600"
             >
               <Link href="/queue">Check Queue Status</Link>
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full sm:w-auto bg-gray-600 text-white hover:bg-yellow-600 flex items-center justify-center gap-2"
+              onClick={() => setShowQr(true)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M17 3c-.3 0-.7.1-1 .3l-1 1c-.6.6-.6 1.5 0 2.1.6.6 1.5.6 2.1 0l1-1c.2-.3.3-.7.3-1 0-1.1-.9-2-2-2z" fill="currentColor" />
+                <path d="M7 3c.3 0 .7.1 1 .3l1 1c.6.6.6 1.5 0 2.1-.6.6-1.5.6-2.1 0l-1-1C5.1 6.4 5 6 5 5.7 5 4.6 5.9 3.7 7 3z" fill="currentColor" />
+                <path d="M19 8H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-8c0-1.1-.9-2-2-2zm-7 10c-2.8 0-5-2.2-5-5s2.2-5 5-5 5 2.2 5 5-2.2 5-5 5z" fill="currentColor" />
+                <path d="M12 12.5c-.8 0-1.5.7-1.5 1.5S11.2 15.5 12 15.5s1.5-.7 1.5-1.5S12.8 12.5 12 12.5z" fill="currentColor" />
+              </svg>
+              <span>Get Our Android App</span>
             </Button>
           </div>
           <div className="flex items-center gap-4 mt-6">
@@ -172,6 +188,44 @@ export default function HeroSection() {
           </div>
         </div>
       </div>
+      {/* QR modal */}
+      {showQr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex justify-between items-start">
+              <h3 className="text-lg font-semibold">Download our App</h3>
+              <button
+                aria-label="Close"
+                className="text-gray-600 hover:text-gray-900"
+                onClick={() => setShowQr(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2 mb-4">Scan the QR code to open the download page on your phone.</p>
+            <div className="flex flex-col items-center gap-4">
+              <img
+                alt="QR code to download app"
+                src="/qr.png"
+                onError={() => {
+                  try {
+                    const link = typeof window !== "undefined" ? `${window.location.origin}/download` : "https://median.co/share/zpzkwba#apk"
+                    setQrSrc(`https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${encodeURIComponent(link)}`)
+                  } catch (e) {
+                    // noop
+                  }
+                }}
+                className="w-48 h-48 bg-white p-2"
+              />
+              <div className="w-full grid grid-cols-1 gap-2">
+                <a href="https://median.co/share/zpzkwba#apk" download className="inline-flex items-center justify-center rounded px-3 py-2 text-sm bg-green-600 text-white hover:bg-green-700 text-center">
+                  Download Android APK
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

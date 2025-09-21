@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { collection, doc, getDoc, query, where, getDocs, orderBy, Timestamp, updateDoc, deleteDoc, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { onAuthStateChanged, getAuth } from "firebase/auth"
+import { toast } from "@/hooks/use-toast"
 // switched profile image upload to local API instead of Firebase Storage
 
 interface Appointment {
@@ -195,14 +196,19 @@ export default function ProfilePage() {
   }
 
   const confirmCancelAppointment = async () => {
-    if (appointmentToCancel) {
-      await deleteDoc(doc(db, "appointments", appointmentToCancel.id));
-      setShowCancelDialog(false);
-      setAppointmentToCancel(null);
-      // Remove from local state
-      setAppointments((prev) => prev.filter(appt => appt.id !== appointmentToCancel.id));
+    if (!appointmentToCancel) return
+    try {
+      await deleteDoc(doc(db, "appointments", appointmentToCancel.id))
+      // Optimistically update UI
+      setAppointments((prev) => prev.filter(appt => appt.id !== appointmentToCancel.id))
+      setShowCancelDialog(false)
+      setAppointmentToCancel(null)
+      toast({ title: "Appointment cancelled", description: "Your appointment has been cancelled." })
+    } catch (err) {
+      console.error("Failed to cancel appointment", err)
+      toast({ title: "Cancel failed", description: "Could not cancel appointment. Please try again.", variant: "destructive" })
     }
-  };
+  }
 
   // Open edit dialog and prefill fields
   const openEditDialog = () => {
