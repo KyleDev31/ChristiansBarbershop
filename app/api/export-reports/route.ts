@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
   summarySheet.getColumn(2).width = 32
   // format currency cell for Total Sales
   const totalSalesCell = summarySheet.getCell(`B${4}`)
-  totalSalesCell.numFmt = '"$"#,##0.00'
+  totalSalesCell.numFmt = '"Php"#,##0.00'
 
   // ---------------- Services Sheet ----------------
   const serviceSheet = workbook.addWorksheet("Services")
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
   transactionSheet.columns = [
     { header: 'Date', key: 'date', width: 22, style: { numFmt: 'mm/dd/yyyy hh:mm:ss' } },
     { header: 'Customer', key: 'customer', width: 28 },
-    { header: 'Amount', key: 'amount', width: 14, style: { numFmt: '"$"#,##0.00' } },
+    { header: 'Amount', key: 'amount', width: 14, style: { numFmt: '"Php"#,##0.00' } },
     { header: 'Type', key: 'type', width: 14 },
     { header: 'Name', key: 'name', width: 30 },
   ]
@@ -210,7 +210,7 @@ export async function POST(req: NextRequest) {
   })
 
   // style revenue column in barber sheet
-  barberSheet.getColumn('revenue').numFmt = '"$"#,##0.00'
+  barberSheet.getColumn('revenue').numFmt = '"Php"#,##0.00'
 
   // final buffer
   const buffer = await workbook.xlsx.writeBuffer()
@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="reports.xlsx"',
+      "Content-Disposition": 'attachment; filename="Christians-Barbershop Report.csv"',
     },
   })
 }
