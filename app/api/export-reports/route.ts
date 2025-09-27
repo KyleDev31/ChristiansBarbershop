@@ -19,8 +19,7 @@ function parseQuantity(q: any) {
   return 1
 }
 
-export async function POST(req: NextRequest) {
-  const { fromDate, toDate } = await req.json()
+async function generateWorkbookBuffer(fromDate: string | number | Date, toDate: string | number | Date) {
   const from = new Date(fromDate)
   const to = new Date(toDate)
 
@@ -214,11 +213,41 @@ export async function POST(req: NextRequest) {
 
   // final buffer
   const buffer = await workbook.xlsx.writeBuffer()
+  return buffer
+}
+
+export async function POST(req: NextRequest) {
+  const { fromDate, toDate } = await req.json()
+  const buffer = await generateWorkbookBuffer(fromDate, toDate)
+
+  const contentLength = typeof (buffer as any).byteLength === 'number' ? (buffer as any).byteLength : (buffer as any).length ?? 0
+
   return new NextResponse(buffer, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="Christians-Barbershop Report.csv"',
+      // use .xlsx and a sensible filename
+      "Content-Disposition": 'attachment; filename="Christians-Barbershop Report.xlsx"',
+      "Content-Length": String(contentLength),
+    },
+  })
+}
+
+// Also provide GET so a normal link (or WebView navigation) can download the file via query params
+export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const from = url.searchParams.get('fromDate') || new Date().toISOString()
+  const to = url.searchParams.get('toDate') || new Date().toISOString()
+  const buffer = await generateWorkbookBuffer(from, to)
+
+  const contentLength = typeof (buffer as any).byteLength === 'number' ? (buffer as any).byteLength : (buffer as any).length ?? 0
+
+  return new NextResponse(buffer, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": 'attachment; filename="Christians-Barbershop Report.xlsx"',
+      "Content-Length": String(contentLength),
     },
   })
 }

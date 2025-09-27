@@ -427,25 +427,23 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="container py-10 ml-4">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container py-10 px-4 sm:px-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <h1 className="text-3xl font-bold">Reports</h1>
-        <div className="flex gap-2">
+  <div className="flex w-full sm:w-auto flex-row gap-2 items-center justify-center sm:justify-end flex-wrap">
           <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline">
                 <CalendarIcon className="h-4 w-4 mr-2" />
                 {dateRange === "custom"
                   ? `${format(fromDate, "MMM d, yyyy")} - ${format(toDate, "MMM d, yyyy")}`
-                  : dateRange.charAt(0).toUpperCase() + dateRange.slice(1)}
+                  : (dateRange ? dateRange.charAt(0).toUpperCase() + dateRange.slice(1) : "Range")}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              {/* Quick date-range select removed — reports use the calendar-selected range only */}
-
+            <PopoverContent className="w-full sm:w-auto p-0 max-h-[80vh] sm:max-h-[60vh] overflow-auto" align="end">
               {dateRange === "custom" && (
                 <div className="p-3 border-t">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <p className="text-sm font-medium mb-1">From</p>
                       <Calendar
@@ -467,17 +465,19 @@ export default function ReportsPage() {
                       />
                     </div>
                   </div>
-                  <div className="flex justify-end mt-2">
-                    <Button size="sm" onClick={() => setIsCalendarOpen(false)}>
-                      Apply
-                    </Button>
+                  {/* sticky footer helps keep actions reachable on small screens */}
+                  <div className="sticky bottom-0 bg-white p-3 border-t mt-2">
+                    <div className="flex flex-col sm:flex-row gap-2 justify-end">
+                      <Button size="sm" className="w-full sm:w-auto" onClick={() => setIsCalendarOpen(false)}>
+                        Apply
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
             </PopoverContent>
           </Popover>
 
-          {/* Dedicated calendar popover for quick date range selection */}
           <Popover open={rangePopoverOpen} onOpenChange={setRangePopoverOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline">
@@ -485,7 +485,7 @@ export default function ReportsPage() {
                 Select Date
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-3" align="end">
+            <PopoverContent className="w-full sm:w-auto p-3 max-h-[80vh] sm:max-h-[60vh] overflow-auto" align="end">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <p className="text-sm font-medium mb-1">From</p>
@@ -508,9 +508,9 @@ export default function ReportsPage() {
                   />
                 </div>
               </div>
-              <div className="flex justify-end gap-2 mt-2">
-                <Button size="sm" variant="ghost" onClick={() => { setRangePopoverOpen(false) }}>Cancel</Button>
-                <Button size="sm" onClick={() => { setDateRange('custom'); setRangePopoverOpen(false) }}>Apply</Button>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
+                <Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={() => { setRangePopoverOpen(false) }}>Cancel</Button>
+                <Button size="sm" className="w-full sm:w-auto" onClick={() => { setDateRange('custom'); setRangePopoverOpen(false) }}>Apply</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -519,39 +519,40 @@ export default function ReportsPage() {
             variant="outline"
             onClick={handleExportClick}
             disabled={isExporting}
+            className="w-auto"
           >
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
 
           {showConfirm && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-          <div className="bg-white p-6 rounded shadow-lg">
-            <p className="font-bold">Are you sure you want to download the report?</p>
-            <div className="mt-4 flex gap-2">
-              <button
-                className="btn btn-success flex items-center justify-center bg-green-500 rounded p-2"
-                onClick={handleConfirmExport}
-                disabled={isExporting}
-              >
-                {isExporting ? "Exporting..." : "Confirm Download"}
-              </button>
-              <button
-                className="btn btn-secondary flex items-center justify-center bg-gray-500 rounded p-2 text-white"
-                onClick={() => setShowConfirm(false)}
-                disabled={isExporting}
-              >
-                Cancel
-              </button>
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+              <div className="bg-white p-6 rounded shadow-lg max-w-sm w-full">
+                <p className="font-bold">Are you sure you want to download the report?</p>
+                <div className="mt-4 flex gap-2 justify-end">
+                  <button
+                    className="btn btn-success flex items-center justify-center bg-green-500 rounded p-2 text-white"
+                    onClick={handleConfirmExport}
+                    disabled={isExporting}
+                  >
+                    {isExporting ? "Exporting..." : "Confirm Download"}
+                  </button>
+                  <button
+                    className="btn btn-secondary flex items-center justify-center bg-gray-500 rounded p-2 text-white"
+                    onClick={() => setShowConfirm(false)}
+                    disabled={isExporting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
         </div>
       </div>
 
       <Tabs defaultValue="sales" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 overflow-x-auto whitespace-nowrap -mx-4 px-4 sm:mx-0 sm:px-0">
           <TabsTrigger value="sales">Sales</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
@@ -594,6 +595,48 @@ export default function ReportsPage() {
                 <p className="text-xs text-green-500">+15.2% from previous period</p>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Charts and tables - responsive heights and horizontal overflow for wide tables */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Revenue Over Time</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48 sm:h-64">{/* responsive chart height */}
+                    <LineChart width={600} height={300} data={barChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Line type="monotone" dataKey="revenue" stroke="#8884d8" />
+                    </LineChart>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Services</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48 sm:h-64">
+                    <PieChart width={400} height={300}>
+                      <Pie data={serviceData} dataKey="value" nameKey="name" outerRadius={80} fill="#8884d8">
+                        {serviceData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "#8884d8" : "#82ca9d"} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -668,7 +711,7 @@ export default function ReportsPage() {
                 <CardDescription>For the selected period</CardDescription>
               </CardHeader>
               <CardContent>
-             <div className="text-3xl font-bold">{totalAvailedServices.toLocaleString(undefined,)}</div>
+                <div className="text-3xl font-bold">{totalAvailedServices.toLocaleString(undefined,)}</div>
                 <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
@@ -679,7 +722,7 @@ export default function ReportsPage() {
                 <CardDescription>Per appointment</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">₱{(serviceRevenue / totalAvailedServices).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-3xl font-bold">₱{(serviceRevenue / Math.max(1, totalAvailedServices)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               </CardContent>
             </Card>
 
@@ -689,7 +732,7 @@ export default function ReportsPage() {
                 <CardDescription>Highest demand</CardDescription>
               </CardHeader>
               <CardContent>
-               <div className="text-xl font-bold">
+                <div className="text-xl font-bold">
                   {serviceData.length > 0
                     ? serviceData.reduce((prev, current) => (prev.value > current.value ? prev : current)).name
                     : "No data"}
@@ -768,7 +811,7 @@ export default function ReportsPage() {
                 <CardDescription>For the selected period</CardDescription>
               </CardHeader>
               <CardContent>
-                 <div className="text-3xl font-bold">₱{productSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-3xl font-bold">₱{productSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
               </CardContent>
             </Card>
 
@@ -778,7 +821,7 @@ export default function ReportsPage() {
                 <CardDescription>Per sale</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{productData.length ? `₱${(productSales / productData.reduce((s, p) => s + p.value, 0)).toFixed(2)}` : "—"}</div>
+                <div className="text-3xl font-bold">{productData.length ? `₱${(productSales / Math.max(1, productData.reduce((s, p) => s + p.value, 0))).toFixed(2)}` : "—"}</div>
                 <p className="text-xs text-muted-foreground">From Firestore</p>
               </CardContent>
             </Card>
@@ -977,7 +1020,7 @@ export default function ReportsPage() {
                 <CardDescription>Per barber</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold"></div>
+                <div className="text-3xl font-bold">{barberData.length ? Math.round(barberData.reduce((s, b) => s + (b.clients || 0), 0) / barberData.length) : "—"}</div>
                 <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
@@ -1003,30 +1046,32 @@ export default function ReportsPage() {
                 <CardDescription>Comparison of barber metrics</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
-                    <div className="col-span-1">Barber</div>
-                    <div className="col-span-1">Clients</div>
-                    <div className="col-span-1">Revenue</div>
-                    <div className="col-span-1">Performance</div>
-                  </div>
-                  {barberData.map((barber, index) => (
-                    <div key={index} className="grid grid-cols-4 p-3 text-sm border-t">
-                      <div className="col-span-1 font-medium">{barber.name}</div>
-                      <div className="col-span-1">{barber.clients}</div>
-                      <div className="col-span-1">{formatCurrency(barber.revenue)}</div>
-                      <div className="col-span-1">
-                        <div className="w-full bg-muted rounded-full h-2.5">
-                          <div
-                            className="bg-primary h-2.5 rounded-full"
-                            style={{
-                              width: `${(barber.revenue / Math.max(...barberData.map((b) => b.revenue))) * 100}%`,
-                            }}
-                          ></div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[600px] rounded-md border">
+                    <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
+                      <div className="col-span-1">Barber</div>
+                      <div className="col-span-1">Clients</div>
+                      <div className="col-span-1">Revenue</div>
+                      <div className="col-span-1">Performance</div>
+                    </div>
+                    {barberData.map((barber, index) => (
+                      <div key={index} className="grid grid-cols-4 p-3 text-sm border-t">
+                        <div className="col-span-1 font-medium">{barber.name}</div>
+                        <div className="col-span-1">{barber.clients}</div>
+                        <div className="col-span-1">{formatCurrency(barber.revenue)}</div>
+                        <div className="col-span-1">
+                          <div className="w-full bg-muted rounded-full h-2.5">
+                            <div
+                              className="bg-primary h-2.5 rounded-full"
+                              style={{
+                                width: `${(barber.revenue / Math.max(1, ...barberData.map((b) => b.revenue || 0))) * 100}%`,
+                              }}
+                            ></div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1037,28 +1082,30 @@ export default function ReportsPage() {
                 <CardDescription>Performance in selected period</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
-                    <div>Barber</div>
-                    <div>Clients</div>
-                    <div>Revenue</div>
-                    <div>Share</div>
-                  </div>
-                  {barberData.map((b, i) => (
-                    <div key={i} className="grid grid-cols-4 p-3 text-sm border-t">
-                      <div className="font-medium">{b.name}</div>
-                      <div>{b.clients}</div>
-                      <div>₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                      <div>
-                        <div className="w-full bg-muted rounded-full h-2.5">
-                          <div
-                            className="bg-primary h-2.5 rounded-full"
-                            style={{ width: `${(b.revenue / Math.max(1, ...barberData.map(x => x.revenue))) * 100}%` }}
-                          ></div>
+                <div className="overflow-x-auto">
+                  <div className="min-w-[600px] rounded-md border">
+                    <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
+                      <div>Barber</div>
+                      <div>Clients</div>
+                      <div>Revenue</div>
+                      <div>Share</div>
+                    </div>
+                    {barberData.map((b, i) => (
+                      <div key={i} className="grid grid-cols-4 p-3 text-sm border-t">
+                        <div className="font-medium">{b.name}</div>
+                        <div>{b.clients}</div>
+                        <div>₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div>
+                          <div className="w-full bg-muted rounded-full h-2.5">
+                            <div
+                              className="bg-primary h-2.5 rounded-full"
+                              style={{ width: `${(b.revenue / Math.max(1, ...barberData.map(x => x.revenue || 0))) * 100}%` }}
+                            ></div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>
