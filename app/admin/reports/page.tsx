@@ -602,25 +602,6 @@ export default function ReportsPage() {
             <div>
               <Card>
                 <CardHeader>
-                  <CardTitle>Revenue Over Time</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-48 sm:h-64">{/* responsive chart height */}
-                    <LineChart width={600} height={300} data={barChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="revenue" stroke="#8884d8" />
-                    </LineChart>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div>
-              <Card>
-                <CardHeader>
                   <CardTitle>Top Services</CardTitle>
                 </CardHeader>
                 <CardContent>

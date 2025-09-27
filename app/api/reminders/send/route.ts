@@ -228,7 +228,48 @@ async function sendEmailReminder(appointment: Appointment) {
 
 async function sendSMSReminder(appointment: Appointment) {
   const message = `Hi ${appointment.name || appointment.customerName}! This is a reminder about your appointment at Christian's Barbershop tomorrow (${appointment.date}) at ${appointment.time} with ${appointment.barber} for ${appointment.serviceName}. Please arrive 10 minutes early. Call (123) 456-7890 if you need to reschedule.`
-  
+  // If Infobip is configured, use Infobip API. Otherwise fallback to Twilio.
+  const infoBipKey = process.env.INFOBIP_API_KEY
+  const infoBipSender = process.env.INFOBIP_SENDER || process.env.TWILIO_PHONE_NUMBER || 'ChristianBarber'
+  const infoBipBase = process.env.INFOBIP_BASE_URL || 'https://api.infobip.com'
+
+  if (infoBipKey) {
+    try {
+      const payload = {
+        messages: [
+          {
+            from: infoBipSender,
+            destinations: [{ to: appointment.phone }],
+            text: message
+          }
+        ]
+      }
+
+      const res = await fetch(`${infoBipBase}/sms/2/text/advanced`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `App ${infoBipKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error('Infobip send failed', res.status, data)
+        throw new Error(`Infobip error: ${res.status} ${JSON.stringify(data)}`)
+      }
+
+      // Infobip returns message statuses in data.messages
+      return data
+    } catch (err) {
+      console.error('Infobip SMS error:', err)
+      throw err
+    }
+  }
+
+  // Fallback to Twilio if Infobip not configured
   await twilioClient.messages.create({
     body: message,
     from: process.env.TWILIO_PHONE_NUMBER,
