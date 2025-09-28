@@ -191,6 +191,7 @@ export default function POSPage() {
   }[]>([])
   const [cashAmount, setCashAmount] = useState("")
   const [cashError, setCashError] = useState("")
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [selectedBarber, setSelectedBarber] = useState("")
   const [barberError, setBarberError] = useState("")
   const [finishedOpen, setFinishedOpen] = useState(false)
@@ -362,40 +363,51 @@ export default function POSPage() {
 
   // Handle payment
   const handlePayment = async () => {
-    if (!selectedBarber) {
-      setBarberError("Please select a barber.")
+    // Prevent double processing
+    if (isProcessingPayment) {
       return
-    } else {
-      setBarberError("")
-    }
-    if (paymentMethod === "cash") {
-      const cash = parseFloat(cashAmount)
-      if (isNaN(cash) || cash <= 0) {
-        setCashError("Enter a valid positive amount.")
-        return
-      }
-      if (cash < total) {
-        setCashError("Cash amount must be at least the total.")
-        return
-      }
-      setCashError("")
-    }
-    // Generate receipt data
-    const toTitle = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
-    const receipt = {
-      id: `REC-${Date.now().toString().slice(-6)}`,
-      date: new Date(),
-      customer: customer,
-      items: cart,
-      subtotal: subtotal,
-      total: total,
-      paymentMethod: paymentMethod,
-      barber: selectedBarber || "",
-      barberName: toTitle(selectedBarber || "")
     }
 
-    // Save to Firestore
+    setIsProcessingPayment(true)
+
     try {
+      // Check if cart contains only products (no services)
+      const hasServices = cart.some(item => item.type === "services")
+      
+      // Only require barber selection if cart contains services
+      if (hasServices && !selectedBarber) {
+        setBarberError("Please select a barber.")
+        return
+      } else {
+        setBarberError("")
+      }
+      if (paymentMethod === "cash") {
+        const cash = parseFloat(cashAmount)
+        if (isNaN(cash) || cash <= 0) {
+          setCashError("Enter a valid positive amount.")
+          return
+        }
+        if (cash < total) {
+          setCashError("Cash amount must be at least the total.")
+          return
+        }
+        setCashError("")
+      }
+      // Generate receipt data
+      const toTitle = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+      const receipt = {
+        id: `REC-${Date.now().toString().slice(-6)}`,
+        date: new Date(),
+        customer: customer,
+        items: cart,
+        subtotal: subtotal,
+        total: total,
+        paymentMethod: paymentMethod,
+        barber: hasServices ? (selectedBarber || "") : "Store",
+        barberName: hasServices ? toTitle(selectedBarber || "") : "Store"
+      }
+
+      // Save to Firestore
       await saveSaleToFirestore({
         transactionId: receipt.id,
         date: receipt.date,
@@ -407,32 +419,39 @@ export default function POSPage() {
         barber: receipt.barber,
         barberName: receipt.barberName,
       })
+      
       toast({
         title: "Sale recorded successfully!",
         description: "The transaction has been saved to the sales database."
       })
-    } catch (error) {
-      // Optionally, you could show an error toast here
-      console.error("Error saving sale to Firestore:", error)
-    }
 
-    // Add to transactions history
-    setTransactions([...transactions, receipt])
-    setIsPaymentDialogOpen(false)
-    setIsReceiptDialogOpen(true)
-    setReceiptData(receipt)
-    setCashAmount("")
-    // Mark any finished appointments that were added to this cart as recorded
-    if (addedFinishedAppointmentIds.length > 0) {
-      for (const id of addedFinishedAppointmentIds) {
-        try {
-          await updateDoc(doc(db, 'appointments', id), { posRecorded: true })
-        } catch (e) {
-          console.error('Failed to mark finished appointment recorded after payment', e)
+      // Add to transactions history
+      setTransactions([...transactions, receipt])
+      setIsPaymentDialogOpen(false)
+      setIsReceiptDialogOpen(true)
+      setReceiptData(receipt)
+      setCashAmount("")
+      // Mark any finished appointments that were added to this cart as recorded
+      if (addedFinishedAppointmentIds.length > 0) {
+        for (const id of addedFinishedAppointmentIds) {
+          try {
+            await updateDoc(doc(db, 'appointments', id), { posRecorded: true })
+          } catch (e) {
+            console.error('Failed to mark finished appointment recorded after payment', e)
+          }
         }
+        // clear tracked ids
+        setAddedFinishedAppointmentIds([])
       }
-      // clear tracked ids
-      setAddedFinishedAppointmentIds([])
+    } catch (error) {
+      console.error("Error saving sale to Firestore:", error)
+      toast({
+        title: "Payment failed",
+        description: "There was an error processing your payment. Please try again.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsProcessingPayment(false)
     }
   }
 
@@ -639,6 +658,15 @@ export default function POSPage() {
     return () => clearTimeout(timer)
   }, [])
 
+  // Clear barber selection when cart becomes products-only
+  useEffect(() => {
+    const hasServices = cart.some(item => item.type === "services")
+    if (!hasServices && selectedBarber) {
+      setSelectedBarber("")
+      setBarberError("")
+    }
+  }, [cart, selectedBarber])
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -669,12 +697,12 @@ export default function POSPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4 max-w-[1920px] text-sm">
+    <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 max-w-[1920px] text-sm">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold">Point of Sale</h1>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold">Point of Sale</h1>
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-          <Button className="bg-green-900 w-full sm:w-auto" onClick={() => setFinishedOpen((v) => !v)}>
+          <Button className="bg-green-900 w-full sm:w-auto text-xs sm:text-sm" onClick={() => setFinishedOpen((v) => !v)}>
             Finished Services
             {finishedCount > 0 && (
               <span className="ml-2 inline-flex items-center justify-center text-xs rounded-full bg-red-600 text-white px-2 py-0.5">
@@ -682,29 +710,29 @@ export default function POSPage() {
               </span>
             )}
           </Button>
-          <Button variant="outline" onClick={() => setCart([])} className="w-full sm:w-auto">
-            <Trash className="h-4 w-4 mr-2" />
+          <Button variant="outline" onClick={() => setCart([])} className="w-full sm:w-auto text-xs sm:text-sm">
+            <Trash className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
             Clear Cart
           </Button>
         </div>
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
         {/* Products/Services Section */}
         <div className="lg:col-span-8">
           <Card className="h-full shadow-sm">
-            <CardHeader className="pb-4">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <CardHeader className="pb-3 sm:pb-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
                 <div>
-                  <CardTitle className="text-lg font-semibold">Products & Services</CardTitle>
-                  <CardDescription className="text-sm text-gray-600">Add items to the current transaction</CardDescription>
+                  <CardTitle className="text-base sm:text-lg font-semibold">Products & Services</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm text-gray-600">Add items to the current transaction</CardDescription>
                 </div>
                 <div className="relative w-full md:w-72">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-2.5 h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
                   <Input
                     placeholder="Search items..."
-                    className="pl-10 h-10 border-gray-200 focus:border-primary"
+                    className="pl-8 sm:pl-10 h-8 sm:h-10 border-gray-200 focus:border-primary text-xs sm:text-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -712,10 +740,10 @@ export default function POSPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="absolute right-1 top-1 h-8 w-8 hover:bg-gray-100"
+                      className="absolute right-1 top-1 h-6 w-6 sm:h-8 sm:w-8 hover:bg-gray-100"
                       onClick={() => setSearchQuery("")}
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3 w-3 sm:h-4 sm:w-4" />
                       <span className="sr-only">Clear search</span>
                     </Button>
                   )}
@@ -724,35 +752,43 @@ export default function POSPage() {
             </CardHeader>
             <CardContent>
               {finishedOpen && (
-                <div className="mb-6 border rounded-lg p-4 bg-green-50 border-green-200">
-                  <div className="font-semibold mb-3 text-green-800">Recently Finished Services</div>
+                <div className="mb-4 sm:mb-6 border rounded-lg p-3 sm:p-4 bg-green-50 border-green-200">
+                  <div className="font-semibold mb-3 text-green-800 text-sm sm:text-base">Recently Finished Services</div>
                   {finishedAppointments.length === 0 ? (
-                    <div className="text-sm text-green-600">No finished services yet.</div>
+                    <div className="text-xs sm:text-sm text-green-600">No finished services yet.</div>
                   ) : (
-                    <div className="space-y-3 max-h-64 overflow-auto pr-1">
+                    <div className="space-y-2 sm:space-y-3 max-h-64 overflow-auto pr-1">
                       {finishedAppointments.map((a: any) => (
-                        <div key={a.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-green-200 rounded-lg p-3 bg-white shadow-sm">
-                          <div className="cursor-pointer flex-1" onClick={() => loadFinishedToCart(a)} title="Load to current sale">
-                            <div className="font-medium text-gray-900">{a.customerName || a.customer || a.email || "Customer"}</div>
-                            <div className="text-sm text-gray-600">
+                        <div key={a.id} className="flex flex-col border border-green-200 rounded-lg p-2 sm:p-3 bg-white shadow-sm">
+                          <div className="cursor-pointer flex-1 mb-2" onClick={() => loadFinishedToCart(a)} title="Load to current sale">
+                            <div className="font-medium text-gray-900 text-sm sm:text-base">{a.customerName || a.customer || a.email || "Customer"}</div>
+                            <div className="text-xs sm:text-sm text-gray-600">
                               {a.serviceName || a.service || "Service"}
                               {a.time ? ` • ${a.time}` : ""}
                               {a.date ? ` • ${a.date}` : ""}
                             </div>
-                            {/* show compact timestamp on mobile */}
-                            <div className="text-xs text-gray-500 block sm:hidden mt-1">
+                            <div className="text-xs text-gray-500 mt-1">
                               {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 mt-3 sm:mt-0 ml-0 sm:ml-4 w-full sm:w-auto">
-                            <div className="text-xs text-gray-500 hidden sm:block mr-2">
-                              {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
-                            </div>
-                            <div className="flex gap-2 flex-1 sm:flex-none">
-                              <Button size="sm" variant="secondary" onClick={() => loadFinishedToCart(a)} className="text-xs w-full sm:w-auto">Add to cart</Button>
-                              <Button size="sm" variant="outline" onClick={() => markFinishedRecorded(a.id)} className="text-xs w-full sm:w-auto">Mark recorded</Button>
-                            </div>
+                          <div className="flex flex-col sm:flex-row gap-2 w-full">
+                            <Button 
+                              size="sm" 
+                              variant="secondary" 
+                              onClick={() => loadFinishedToCart(a)} 
+                              className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
+                            >
+                              Add to cart
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => markFinishedRecorded(a.id)} 
+                              className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
+                            >
+                              Mark recorded
+                            </Button>
                           </div>
                         </div>
                       ))}
@@ -761,48 +797,48 @@ export default function POSPage() {
                 </div>
               )}
               <Tabs defaultValue="services" value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="mb-6 bg-gray-100">
-                  <TabsTrigger value="services" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Services</TabsTrigger>
-                  <TabsTrigger value="products" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">Products</TabsTrigger>
+                <TabsList className="mb-4 sm:mb-6 bg-gray-100">
+                  <TabsTrigger value="services" className="data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs sm:text-sm">Services</TabsTrigger>
+                  <TabsTrigger value="products" className="data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs sm:text-sm">Products</TabsTrigger>
                 </TabsList>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 justify-items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 justify-items-center">
                   {filteredItems.map((item) => (
                     <Card
                       key={item.id}
-                      className="cursor-pointer hover:shadow-lg border border-gray-200 hover:border-primary transition-all duration-200 group rounded-lg p-0 w-full max-w-[200px] h-[140px] flex flex-col"
+                      className="cursor-pointer hover:shadow-lg border border-gray-200 hover:border-primary transition-all duration-200 group rounded-lg p-0 w-full max-w-[180px] sm:max-w-[200px] h-[120px] sm:h-[140px] flex flex-col"
                       onClick={() => handleCardClick(item)}
                     >
-                      <CardContent className="flex flex-col justify-between items-center p-4 h-full">
+                      <CardContent className="flex flex-col justify-between items-center p-2 sm:p-4 h-full">
                         <div className="flex-1 flex flex-col justify-center items-center text-center">
-                          <div className="font-semibold text-sm text-center mb-2 w-full leading-tight line-clamp-2">{item.name}</div>
+                          <div className="font-semibold text-xs sm:text-sm text-center mb-1 sm:mb-2 w-full leading-tight line-clamp-2">{item.name}</div>
                           <div className="flex justify-center items-center w-full">
-                            <span className="text-lg font-bold text-primary">{formatCurrency(item.price)}</span>
+                            <span className="text-sm sm:text-lg font-bold text-primary">{formatCurrency(item.price)}</span>
                           </div>
                         </div>
                         {'duration' in item && (
-                          <div className="flex justify-center gap-1 mt-2">
+                          <div className="flex justify-center gap-1 mt-1 sm:mt-2">
                             <Button
                               variant="secondary"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-6 w-6 sm:h-7 sm:w-7"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 editService(item as Service)
                               }}
                             >
-                              <Edit className="h-3 w-3" />
+                              <Edit className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                             <Button
                               variant="destructive"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-6 w-6 sm:h-7 sm:w-7"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 deleteService(item.id)
                               }}
                             >
-                              <Trash className="h-3 w-3" />
+                              <Trash className="h-2 w-2 sm:h-3 sm:w-3" />
                             </Button>
                           </div>
                         )}
@@ -817,61 +853,61 @@ export default function POSPage() {
 
         {/* Cart Section */}
         <div className="lg:col-span-4">
-          <Card className="h-full flex flex-col sticky top-6 shadow-sm">
-            <CardHeader className="pb-4">
+          <Card className="h-full flex flex-col sticky top-4 sm:top-6 shadow-sm">
+            <CardHeader className="pb-3 sm:pb-4">
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle className="text-lg font-semibold">Current Sale</CardTitle>
-                  <CardDescription className="text-sm text-gray-600">
+                  <CardTitle className="text-base sm:text-lg font-semibold">Current Sale</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm text-gray-600">
                     {cart.length} {cart.length === 1 ? "item" : "items"} in cart
                   </CardDescription>
                 </div>
-                <ShoppingCart className="h-6 w-6 text-gray-400" />
+                <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
               </div>
             </CardHeader>
-            <CardContent className="flex-grow overflow-auto px-4">
+            <CardContent className="flex-grow overflow-auto px-3 sm:px-4">
               {cart.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   {cart.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between border border-gray-200 rounded-lg p-3 bg-gray-50">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-200 flex items-center justify-center">
-                          <ShoppingCart className="h-5 w-5 text-gray-400" />
+                    <div key={index} className="flex items-center justify-between border border-gray-200 rounded-lg p-2 sm:p-3 bg-gray-50">
+                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-200 flex items-center justify-center">
+                          <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium text-sm truncate">{item.name}</div>
+                          <div className="font-medium text-xs sm:text-sm truncate">{item.name}</div>
                           <div className="text-xs text-gray-600">
                             {formatCurrency(item.price)} × {item.quantity}
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                         <div className="flex items-center border border-gray-300 rounded-md bg-white">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 rounded-none hover:bg-gray-100"
+                            className="h-6 w-6 sm:h-7 sm:w-7 rounded-none hover:bg-gray-100"
                             onClick={() => updateQuantity(index, item.quantity - 1)}
                           >
-                            <Minus className="h-3 w-3" />
+                            <Minus className="h-2 w-2 sm:h-3 sm:w-3" />
                           </Button>
-                          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
+                          <span className="w-6 sm:w-8 text-center text-xs sm:text-sm font-medium">{item.quantity}</span>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 rounded-none hover:bg-gray-100"
+                            className="h-6 w-6 sm:h-7 sm:w-7 rounded-none hover:bg-gray-100"
                             onClick={() => updateQuantity(index, item.quantity + 1)}
                           >
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-2 w-2 sm:h-3 sm:w-3" />
                           </Button>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-red-500 hover:bg-red-50"
+                          className="h-6 w-6 sm:h-7 sm:w-7 text-red-500 hover:bg-red-50"
                           onClick={() => removeFromCart(index)}
                         >
-                          <Trash className="h-3 w-3" />
+                          <Trash className="h-2 w-2 sm:h-3 sm:w-3" />
                         </Button>
                       </div>
                     </div>
@@ -887,14 +923,14 @@ export default function POSPage() {
                 </div>
               )}
             </CardContent>
-            <CardFooter className="flex-shrink-0 border-t border-gray-200 pt-4 px-4">
-              <div className="w-full space-y-4">
+            <CardFooter className="flex-shrink-0 border-t border-gray-200 pt-3 sm:pt-4 px-3 sm:px-4">
+              <div className="w-full space-y-3 sm:space-y-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs sm:text-sm">
                     <span className="text-gray-600">Subtotal</span>
                     <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-lg border-t border-gray-200 pt-2">
+                  <div className="flex justify-between font-bold text-base sm:text-lg border-t border-gray-200 pt-2">
                     <span>Total</span>
                     <span className="text-primary">{formatCurrency(total)}</span>
                   </div>
@@ -902,9 +938,9 @@ export default function POSPage() {
                 <Button 
                   disabled={cart.length === 0} 
                   onClick={() => setIsPaymentDialogOpen(true)}
-                  className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-medium"
+                  className="w-full h-9 sm:h-11 bg-primary hover:bg-primary/90 text-white font-medium text-xs sm:text-sm"
                 >
-                  <CreditCard className="h-4 w-4 mr-2" />
+                  <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                   Process Payment
                 </Button>
               </div>
@@ -939,24 +975,26 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Barber Selection */}
-        <div className="space-y-2">
-          <Label htmlFor="barber">Select Barber</Label>
-          <Select value={selectedBarber} onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
-            <SelectTrigger id="barber">
-              <SelectValue placeholder="Choose a barber" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="jayboy">Jayboy</SelectItem>
-              <SelectItem value="noel">Noel</SelectItem>
-              <SelectItem value="abel">Abel</SelectItem>
-            </SelectContent>
-          </Select>
-          {selectedBarber && (
-            <div className="text-sm text-muted-foreground">Auto-selected: {selectedBarber}</div>
-          )}
-          {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
-        </div>
+        {/* Barber Selection - Only show if cart contains services */}
+        {cart.some(item => item.type === "services") && (
+          <div className="space-y-2">
+            <Label htmlFor="barber">Select Barber</Label>
+            <Select value={selectedBarber} onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
+              <SelectTrigger id="barber">
+                <SelectValue placeholder="Choose a barber" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="jayboy">Jayboy</SelectItem>
+                <SelectItem value="noel">Noel</SelectItem>
+                <SelectItem value="abel">Abel</SelectItem>
+              </SelectContent>
+            </Select>
+            {selectedBarber && (
+              <div className="text-sm text-muted-foreground">Auto-selected: {selectedBarber}</div>
+            )}
+            {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
+          </div>
+        )}
 
         {/* Payment Method */}
         <div className="space-y-2">
@@ -1001,10 +1039,27 @@ export default function POSPage() {
       </div>
     </div>
     <DialogFooter>
-      <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+      <Button 
+        variant="outline" 
+        onClick={() => setIsPaymentDialogOpen(false)}
+        disabled={isProcessingPayment}
+      >
         Cancel
       </Button>
-      <Button onClick={handlePayment}>Complete Payment</Button>
+      <Button 
+        onClick={handlePayment}
+        disabled={isProcessingPayment}
+        className={isProcessingPayment ? "opacity-50 cursor-not-allowed" : ""}
+      >
+        {isProcessingPayment ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            Processing...
+          </>
+        ) : (
+          "Complete Payment"
+        )}
+      </Button>
     </DialogFooter>
   </DialogContent>
 </Dialog>

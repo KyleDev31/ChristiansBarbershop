@@ -23,6 +23,7 @@ import {
   YAxis,
   Cell,
 } from "recharts"
+import { ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { collection, getDocs } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -165,7 +166,7 @@ export default function ReportsPage() {
   }, [fromDate, toDate])
 
   useEffect(() => {
-    // Barber metrics: clients count and revenue by barber inferred from sales items
+    // Barber metrics: clients count and revenue by barber inferred from sales items (SERVICES ONLY)
     const fetchBarberMetrics = async () => {
       const salesRef = collection(db, "sales")
       const querySnapshot = await getDocs(salesRef)
@@ -181,9 +182,28 @@ export default function ReportsPage() {
         ) {
           const barber = (sale.barber || sale.barberName || "Unknown").toString()
           if (!map[barber]) map[barber] = { name: barber, clients: 0, rating: 0, revenue: 0 }
-          map[barber].clients += 1
-          const total = typeof sale.total === "number" ? sale.total : parseFloat(sale.total)
-          map[barber].revenue += isNaN(total) ? 0 : total
+          
+          // Only count services toward barber performance, not products
+          let serviceRevenue = 0
+          let hasServices = false
+          
+          if (Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+              if (item.type === "services" || item.type === "service") {
+                const price = typeof item.price === "number" ? item.price : parseFloat(item.price)
+                const qty = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity)
+                const units = isNaN(qty) ? 1 : qty
+                serviceRevenue += (isNaN(price) ? 0 : price) * units
+                hasServices = true
+              }
+            })
+          }
+          
+          // Only count this sale if it contains services
+          if (hasServices) {
+            map[barber].clients += 1
+            map[barber].revenue += serviceRevenue
+          }
         }
       })
       const list = Object.values(map).sort((a, b) => b.revenue - a.revenue)
@@ -427,10 +447,10 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="container py-10 px-4 sm:px-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <h1 className="text-3xl font-bold">Reports</h1>
-  <div className="flex w-full sm:w-auto flex-row gap-2 items-center justify-center sm:justify-end flex-wrap">
+    <div className="container py-4 sm:py-10 px-2 sm:px-4 lg:px-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold">Reports</h1>
+        <div className="flex w-full sm:w-auto flex-row gap-2 items-center justify-center sm:justify-end flex-wrap">
           <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline">
@@ -440,33 +460,37 @@ export default function ReportsPage() {
                   : (dateRange ? dateRange.charAt(0).toUpperCase() + dateRange.slice(1) : "Range")}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-full sm:w-auto p-0 max-h-[80vh] sm:max-h-[60vh] overflow-auto" align="end">
+            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-auto p-0 max-h-[85vh] sm:max-h-[60vh] overflow-auto" align="end">
               {dateRange === "custom" && (
-                <div className="p-3 border-t">
+                <div className="p-2 sm:p-3 border-t">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <p className="text-sm font-medium mb-1">From</p>
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={(date) => date && setFromDate(date)}
-                        disabled={(date) => date > toDate || date > new Date()}
-                        initialFocus
-                      />
+                      <div className="scale-90 sm:scale-100 origin-top-left">
+                        <Calendar
+                          mode="single"
+                          selected={fromDate}
+                          onSelect={(date) => date && setFromDate(date)}
+                          disabled={(date) => date > toDate || date > new Date()}
+                          initialFocus
+                        />
+                      </div>
                     </div>
                     <div>
                       <p className="text-sm font-medium mb-1">To</p>
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={(date) => date && setToDate(date)}
-                        disabled={(date) => date < fromDate || date > new Date()}
-                        initialFocus
-                      />
+                      <div className="scale-90 sm:scale-100 origin-top-left">
+                        <Calendar
+                          mode="single"
+                          selected={toDate}
+                          onSelect={(date) => date && setToDate(date)}
+                          disabled={(date) => date < fromDate || date > new Date()}
+                          initialFocus
+                        />
+                      </div>
                     </div>
                   </div>
                   {/* sticky footer helps keep actions reachable on small screens */}
-                  <div className="sticky bottom-0 bg-white p-3 border-t mt-2">
+                  <div className="sticky bottom-0 bg-white p-2 sm:p-3 border-t mt-2">
                     <div className="flex flex-col sm:flex-row gap-2 justify-end">
                       <Button size="sm" className="w-full sm:w-auto" onClick={() => setIsCalendarOpen(false)}>
                         Apply
@@ -485,27 +509,31 @@ export default function ReportsPage() {
                 Select Date
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-full sm:w-auto p-3 max-h-[80vh] sm:max-h-[60vh] overflow-auto" align="end">
-              <div className="grid grid-cols-2 gap-2">
+            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-auto p-2 sm:p-3 max-h-[85vh] sm:max-h-[60vh] overflow-auto" align="end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <p className="text-sm font-medium mb-1">From</p>
-                  <Calendar
-                    mode="single"
-                    selected={fromDate}
-                    onSelect={(date) => date && setFromDate(date)}
-                    disabled={(date) => date > toDate || date > new Date()}
-                    initialFocus
-                  />
+                  <div className="scale-90 sm:scale-100 origin-top-left">
+                    <Calendar
+                      mode="single"
+                      selected={fromDate}
+                      onSelect={(date) => date && setFromDate(date)}
+                      disabled={(date) => date > toDate || date > new Date()}
+                      initialFocus
+                    />
+                  </div>
                 </div>
                 <div>
                   <p className="text-sm font-medium mb-1">To</p>
-                  <Calendar
-                    mode="single"
-                    selected={toDate}
-                    onSelect={(date) => date && setToDate(date)}
-                    disabled={(date) => date < fromDate || date > new Date()}
-                    initialFocus
-                  />
+                  <div className="scale-90 sm:scale-100 origin-top-left">
+                    <Calendar
+                      mode="single"
+                      selected={toDate}
+                      onSelect={(date) => date && setToDate(date)}
+                      disabled={(date) => date < fromDate || date > new Date()}
+                      initialFocus
+                    />
+                  </div>
                 </div>
               </div>
               <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
@@ -552,7 +580,7 @@ export default function ReportsPage() {
       </div>
 
       <Tabs defaultValue="sales" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 overflow-x-auto whitespace-nowrap -mx-4 px-4 sm:mx-0 sm:px-0">
+        <TabsList className="mb-4 sm:mb-6 overflow-x-auto whitespace-nowrap -mx-2 px-2 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0">
           <TabsTrigger value="sales">Sales</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
@@ -562,7 +590,7 @@ export default function ReportsPage() {
 
         {/* Sales Report Tab */}
         <TabsContent value="sales">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Total Revenue</CardTitle>
@@ -570,7 +598,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">₱{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <p className="text-xs text-green-500">+12.5% from previous period</p>
+                <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
 
@@ -581,7 +609,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">₱{serviceRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <p className="text-xs text-green-500">+8.3% from previous period</p>
+                <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
 
@@ -592,13 +620,13 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">₱{productRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <p className="text-xs text-green-500">+15.2% from previous period</p>
+                <p className="text-xs text-green-500"></p>
               </CardContent>
             </Card>
           </div>
 
           {/* Charts and tables - responsive heights and horizontal overflow for wide tables */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <div>
               <Card>
                 <CardHeader>
@@ -606,21 +634,45 @@ export default function ReportsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="h-48 sm:h-64">
-                    <PieChart width={400} height={300}>
-                      <Pie data={serviceData} dataKey="value" nameKey="name" outerRadius={80} fill="#8884d8">
-                        {serviceData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "#8884d8" : "#82ca9d"} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={serviceData} dataKey="value" nameKey="name" outerRadius={80} fill="#8884d8">
+                          {serviceData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "#8884d8" : "#82ca9d"} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Products</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-48 sm:h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={productData} dataKey="value" nameKey="name" outerRadius={80} fill="#ff7300">
+                          {productData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index % 2 === 0 ? "#ff7300" : "#ffc658"} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Revenue Breakdown</CardTitle>
@@ -638,7 +690,7 @@ export default function ReportsPage() {
                       color: "hsl(var(--chart-2))",
                     },
                   }}
-                  className="aspect-[4/3]"
+                  className="h-[250px] sm:h-[300px]"
                 >
                   <BarChart data={barChartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -673,19 +725,14 @@ export default function ReportsPage() {
                   ))}
                 </div>
               </CardContent>
-              <CardFooter>
-                <Button variant="outline" className="w-full">
-                  <FileText className="h-4 w-4 mr-2" />
-                  View All Transactions
-                </Button>
-              </CardFooter>
+
             </Card>
           </div>
         </TabsContent>
 
         {/* Services Report Tab */}
         <TabsContent value="services">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Total Services</CardTitle>
@@ -734,24 +781,26 @@ export default function ReportsPage() {
                 <CardDescription>Distribution of services</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
-                  <PieChart width={400} height={300}>
-                    <Pie
-                      data={serviceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {serviceData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={`hsl(${index * 40}, 70%, 50%)`} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
+                <div className="h-[250px] sm:h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={serviceData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={60}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {serviceData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={`hsl(${index * 40}, 70%, 50%)`} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
@@ -785,7 +834,7 @@ export default function ReportsPage() {
 
         {/* Products Report Tab */}
         <TabsContent value="products">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Total Products Sold</CardTitle>
@@ -826,24 +875,26 @@ export default function ReportsPage() {
                 <CardDescription>By product category</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
-                  <PieChart width={400} height={300}>
-                    <Pie
-                      data={productData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {productData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={`hsl(${index * 40 + 120}, 70%, 50%)`} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend />
-                  </PieChart>
+                <div className="h-[250px] sm:h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={productData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        outerRadius={60}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {productData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={`hsl(${index * 40 + 120}, 70%, 50%)`} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
@@ -877,7 +928,7 @@ export default function ReportsPage() {
 
         {/* Appointments Report Tab */}
         <TabsContent value="appointments">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Total Appointments</CardTitle>
@@ -885,7 +936,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">{totalAppointments}</div>
-                <p className="text-xs text-muted-foreground">From Firestore</p>
+                <p className="text-xs text-muted-foreground"></p>
               </CardContent>
             </Card>
 
@@ -934,7 +985,7 @@ export default function ReportsPage() {
                       color: "hsl(var(--chart-2))",
                     },
                   }}
-                  className="aspect-[4/3]"
+                  className="h-[250px] sm:h-[300px]"
                 >
                   <BarChart data={appointmentData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" />
@@ -984,7 +1035,7 @@ export default function ReportsPage() {
 
         {/* Barbers Report Tab */}
         <TabsContent value="barbers">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Total Barbers</CardTitle>
@@ -1009,37 +1060,37 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Top Performer</CardTitle>
-                <CardDescription>Highest revenue</CardDescription>
+                <CardDescription>Highest service revenue</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-xl font-bold">{barberData[0]?.name || "—"}</div>
                 <p className="text-xs text-muted-foreground">
-                  {barberData[0]?.revenue != null ? `₱${Number(barberData[0].revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} revenue` : "No data"}
+                  {barberData[0]?.revenue != null ? `₱${Number(barberData[0].revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} service revenue` : "No data"}
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 gap-4 sm:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle>Barber Performance</CardTitle>
-                <CardDescription>Comparison of barber metrics</CardDescription>
+                <CardDescription>Service revenue and client metrics (products excluded)</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <div className="min-w-[600px] rounded-md border">
-                    <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
+                  <div className="min-w-[320px] sm:min-w-[600px] rounded-md border">
+                    <div className="grid grid-cols-4 bg-muted p-2 sm:p-3 text-xs sm:text-sm font-medium">
                       <div className="col-span-1">Barber</div>
                       <div className="col-span-1">Clients</div>
                       <div className="col-span-1">Revenue</div>
                       <div className="col-span-1">Performance</div>
                     </div>
                     {barberData.map((barber, index) => (
-                      <div key={index} className="grid grid-cols-4 p-3 text-sm border-t">
-                        <div className="col-span-1 font-medium">{barber.name}</div>
+                      <div key={index} className="grid grid-cols-4 p-2 sm:p-3 text-xs sm:text-sm border-t">
+                        <div className="col-span-1 font-medium truncate">{barber.name}</div>
                         <div className="col-span-1">{barber.clients}</div>
-                        <div className="col-span-1">{formatCurrency(barber.revenue)}</div>
+                        <div className="col-span-1 text-xs sm:text-sm">{formatCurrency(barber.revenue)}</div>
                         <div className="col-span-1">
                           <div className="w-full bg-muted rounded-full h-2.5">
                             <div
@@ -1064,18 +1115,18 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <div className="min-w-[600px] rounded-md border">
-                    <div className="grid grid-cols-4 bg-muted p-3 text-sm font-medium">
+                  <div className="min-w-[320px] sm:min-w-[600px] rounded-md border">
+                    <div className="grid grid-cols-4 bg-muted p-2 sm:p-3 text-xs sm:text-sm font-medium">
                       <div>Barber</div>
                       <div>Clients</div>
                       <div>Revenue</div>
                       <div>Share</div>
                     </div>
                     {barberData.map((b, i) => (
-                      <div key={i} className="grid grid-cols-4 p-3 text-sm border-t">
-                        <div className="font-medium">{b.name}</div>
+                      <div key={i} className="grid grid-cols-4 p-2 sm:p-3 text-xs sm:text-sm border-t">
+                        <div className="font-medium truncate">{b.name}</div>
                         <div>{b.clients}</div>
-                        <div>₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-xs sm:text-sm">₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                         <div>
                           <div className="w-full bg-muted rounded-full h-2.5">
                             <div
