@@ -184,7 +184,7 @@ async function sendEmailReminder(appointment: Appointment) {
           <h2 style="color: #333; margin-bottom: 20px;">Appointment Reminder</h2>
           
           <p style="color: #666; font-size: 16px; line-height: 1.6;">
-            Hello ${appointment.name || appointment.customerName},
+            Hello,
           </p>
           
           <p style="color: #666; font-size: 16px; line-height: 1.6;">
@@ -227,7 +227,7 @@ async function sendEmailReminder(appointment: Appointment) {
 }
 
 async function sendSMSReminder(appointment: Appointment) {
-  const message = `Hi ${appointment.name || appointment.customerName}! This is a reminder about your appointment at Christian's Barbershop tomorrow (${appointment.date}) at ${appointment.time} with ${appointment.barber} for ${appointment.serviceName}. Please arrive 10 minutes early. Call (123) 456-7890 if you need to reschedule.`
+  const message = `Hi! This is a reminder about your appointment at Christian's Barbershop tomorrow (${appointment.date}) at ${appointment.time} with ${appointment.barber} for ${appointment.serviceName}. Please arrive 10 minutes early. Call (123) 456-7890 if you need to reschedule.`
   // If Infobip is configured, use Infobip API. Otherwise fallback to Twilio.
   const infoBipKey = process.env.INFOBIP_API_KEY
   const infoBipSender = process.env.INFOBIP_SENDER || process.env.TWILIO_PHONE_NUMBER || 'ChristianBarber'
