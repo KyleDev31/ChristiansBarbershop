@@ -59,6 +59,26 @@ async function generateWorkbookBuffer(fromDate: string | number | Date, toDate: 
   // compute total sales for the selected date range
   const totalSales = sales.reduce((sum, s) => sum + safeNumber(s.total), 0)
 
+  // compute total amount of services and products
+  let totalServicesAmount = 0
+  let totalProductsAmount = 0
+  
+  sales.forEach(s => {
+    if (Array.isArray(s.items)) {
+      s.items.forEach((it: any) => {
+        const price = safeNumber(it.price)
+        const qty = parseQuantity(it.quantity)
+        const amount = price * qty
+        
+        if (it.type === 'service' || it.type === 'services') {
+          totalServicesAmount += amount
+        } else if (it.type === 'product' || it.type === 'products') {
+          totalProductsAmount += amount
+        }
+      })
+    }
+  })
+
   // ---------------- Summary Sheet ----------------
   const summarySheet = workbook.addWorksheet("Summary")
   // Title
@@ -71,15 +91,23 @@ async function generateWorkbookBuffer(fromDate: string | number | Date, toDate: 
   summarySheet.addRow([])
   summarySheet.addRow(["Report Range", `${from.toDateString()} - ${to.toDateString()}`])
   summarySheet.addRow(["Total Sales", totalSales])
+  summarySheet.addRow(["Total Services Amount", totalServicesAmount])
+  summarySheet.addRow(["Total Products Amount", totalProductsAmount])
   summarySheet.addRow(["Total Transactions (sales records)", sales.length])
   summarySheet.addRow(["Total Appointments in range", appts.length])
 
   // style summary
   summarySheet.getColumn(1).width = 36
   summarySheet.getColumn(2).width = 32
-  // format currency cell for Total Sales
+  // format currency cells for Total Sales, Services, and Products
   const totalSalesCell = summarySheet.getCell(`B${4}`)
   totalSalesCell.numFmt = '"Php"#,##0.00'
+  
+  const totalServicesCell = summarySheet.getCell(`B${5}`)
+  totalServicesCell.numFmt = '"Php"#,##0.00'
+  
+  const totalProductsCell = summarySheet.getCell(`B${6}`)
+  totalProductsCell.numFmt = '"Php"#,##0.00'
 
   // ---------------- Services Sheet ----------------
   const serviceSheet = workbook.addWorksheet("Services")

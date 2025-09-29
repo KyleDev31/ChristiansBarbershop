@@ -21,7 +21,12 @@ Add the following environment variables to your `.env.local` file:
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=kwjwflomxdfrbgul  # Use App Password, not regular password
 
-# Twilio Configuration
+# SMS Chef Configuration (Primary SMS Provider)
+SMS_CHEF_API_KEY=your_sms_chef_api_key
+SMS_CHEF_SENDER=your_sender_name_or_number
+SMS_CHEF_BASE_URL=https://api.smschef.com
+
+# Twilio Configuration (Fallback)
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
@@ -42,14 +47,24 @@ NEXTAUTH_URL=http://localhost:3000  # or your production URL
    - Generate a new app password for "Mail"
    - Use this password in `EMAIL_PASS`
 
-### 3. Twilio Setup (for SMS Reminders)
+### 3. SMS Chef Setup (Primary SMS Provider)
+
+1. Sign up for an SMS Chef account at https://www.smschef.com
+2. Get your API key from the SMS Chef dashboard
+3. Set up your sender name or number
+4. Add these credentials to your environment variables:
+   - `SMS_CHEF_API_KEY`: Your API key from SMS Chef dashboard
+   - `SMS_CHEF_SENDER`: Your sender name or phone number
+   - `SMS_CHEF_BASE_URL`: API base URL (usually https://api.smschef.com)
+
+### 4. Twilio Setup (Fallback SMS Provider)
 
 1. Sign up for a Twilio account at https://www.twilio.com
 2. Get your Account SID and Auth Token from the Twilio Console
 3. Purchase a phone number for sending SMS
-4. Add these credentials to your environment variables
+4. Add these credentials to your environment variables (used as fallback)
 
-### 4. Setting Up Automatic Reminders
+### 5. Setting Up Automatic Reminders
 
 #### Option A: Using Vercel Cron Jobs (Recommended for Production)
 
@@ -115,7 +130,11 @@ The system looks for appointments with the following fields:
 ### Common Issues
 
 1. **Email not sending**: Check Gmail app password and 2FA settings
-2. **SMS not sending**: Verify Twilio credentials and phone number format
+2. **SMS not sending**: 
+   - Verify SMS Chef API key and credentials
+   - Check phone number format (should include country code)
+   - Review SMS Chef API documentation for correct endpoint and payload format
+   - Check fallback providers (Infobip, Twilio) if SMS Chef fails
 3. **No appointments found**: Check date format and timezone settings
 4. **Cron job failing**: Verify CRON_SECRET and endpoint accessibility
 

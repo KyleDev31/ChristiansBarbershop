@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CalendarIcon, ChevronLeft, Scissors } from "lucide-react"
 import { format, parse, isBefore, isSameDay } from "date-fns"
-import { addDoc, collection, serverTimestamp, getDocs, query, where } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase"; 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -137,6 +137,22 @@ export default function BookingPage() {
       const auth = getAuth();
       const user = auth.currentUser;
       const userEmail = user?.email || "";
+      
+      // Fetch user's phone number from their profile
+      let userPhone = "";
+      if (user?.uid) {
+        try {
+          const userDocRef = doc(db, "users", user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            userPhone = userData.phone || "";
+          }
+        } catch (error) {
+          console.error("Error fetching user phone:", error);
+        }
+      }
+      
       await addDoc(collection(db, "appointments"), {
         barberId: selectedBarberData?.id,
         barber: selectedBarberData?.name,
@@ -149,6 +165,9 @@ export default function BookingPage() {
         estimatedWait: 10,
         timestamp: serverTimestamp(),
         email: userEmail,
+        phone: userPhone,
+        customerName: user?.displayName || userEmail.split('@')[0],
+        scheduledAt: serverTimestamp(),
       });
       setShowSuccess(true)
       setTimeout(() => {
@@ -266,19 +285,7 @@ export default function BookingPage() {
                   ))}
                 </div>
                 {/* Add-ons/Note input */}
-                <div className="mt-6">
-                  <label className="block text-sm font-medium mb-1" htmlFor="addon-note">
-                    Add-ons / Note <span className="text-muted-foreground">(optional)</span>
-                  </label>
-                  <textarea
-                    id="addon-note"
-                    className="w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring focus:ring-primary/30"
-                    rows={2}
-                    placeholder="Add a note or specify add-ons (e.g. 'Include scalp massage', 'No razor', etc.)"
-                    value={addonNote}
-                    onChange={e => setAddonNote(e.target.value)}
-                  />
-                </div>
+               
               </CardContent>
               <CardFooter className="flex justify-between">
                 <Button variant="outline" onClick={() => router.push("/")}>
