@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -198,6 +198,26 @@ export default function POSPage() {
   const [finishedAppointments, setFinishedAppointments] = useState<any[]>([])
   const [finishedCount, setFinishedCount] = useState(0)
   const [addedFinishedAppointmentIds, setAddedFinishedAppointmentIds] = useState<string[]>([])
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState("")
+  const [confirmMessage, setConfirmMessage] = useState("")
+  const confirmActionRef = useRef<null | (() => void | Promise<void>)>(null)
+
+  const openConfirm = (title: string, message: string, onConfirm: () => void | Promise<void>) => {
+    setConfirmTitle(title)
+    setConfirmMessage(message)
+    confirmActionRef.current = onConfirm
+    setIsConfirmOpen(true)
+  }
+
+  const handleConfirm = async () => {
+    const action = confirmActionRef.current
+    setIsConfirmOpen(false)
+    if (action) {
+      await action()
+    }
+    confirmActionRef.current = null
+  }
 
   // Filter items based on search query and active tab
   const filteredItems =
@@ -318,6 +338,26 @@ export default function POSPage() {
       setAddedFinishedAppointmentIds((prev) => (prev.includes(a.id) ? prev : [...prev, a.id]))
     }
   }
+  const confirmLoadFinishedToCart = (a: any) => {
+    openConfirm(
+      "Add to cart",
+      "Load this finished service into the current cart?",
+      () => {
+        loadFinishedToCart(a)
+        toast({ title: "Added to cart", description: "Finished service loaded into cart." })
+      }
+    )
+  }
+  const confirmClearCart = () => {
+    openConfirm(
+      "Clear cart",
+      "Are you sure you want to remove all items from the cart?",
+      () => {
+        setCart([])
+        toast({ title: "Cart cleared", description: "All items have been removed." })
+      }
+    )
+  }
 
   // Mark a finished appointment as recorded so it disappears
   const markFinishedRecorded = async (id: string) => {
@@ -328,6 +368,13 @@ export default function POSPage() {
       console.error("Failed to mark recorded", e)
       toast({ title: "Action failed", description: "Could not mark as recorded.", variant: "destructive" })
     }
+  }
+  const confirmMarkRecorded = (id: string) => {
+    openConfirm(
+      "Mark recorded",
+      "Are you sure you want to mark this finished appointment as recorded?",
+      () => markFinishedRecorded(id)
+    )
   }
 
   // Add item to cart
@@ -345,6 +392,16 @@ export default function POSPage() {
     } else {
       setCart([...cart, { ...item, quantity: 1, type: activeTab, isSpecialRequest: false }])
     }
+  }
+  const confirmAddToCart = (item: { id: number; name: string; price: number; type?: string; image?: string }) => {
+    openConfirm(
+      "Add to cart",
+      `Add "${item.name}" to the cart?`,
+      () => {
+        addToCart(item)
+        toast({ title: "Added to cart", description: `${item.name} has been added to the cart.` })
+      }
+    )
   }
 
   // Remove item from cart
@@ -540,10 +597,10 @@ export default function POSPage() {
   const handleCardClick = (item: Item) => {
     if ('duration' in item) {
       // It's a service
-      addToCart(item)
+      confirmAddToCart(item)
     } else {
       // It's a product
-      addToCart(item)
+      confirmAddToCart(item)
     }
   }
 
@@ -710,7 +767,7 @@ export default function POSPage() {
               </span>
             )}
           </Button>
-          <Button variant="outline" onClick={() => setCart([])} className="w-full sm:w-auto text-xs sm:text-sm">
+          <Button variant="outline" onClick={confirmClearCart} className="w-full sm:w-auto text-xs sm:text-sm">
             <Trash className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
             Clear Cart
           </Button>
@@ -776,7 +833,7 @@ export default function POSPage() {
                             <Button 
                               size="sm" 
                               variant="secondary" 
-                              onClick={() => loadFinishedToCart(a)} 
+                              onClick={() => confirmLoadFinishedToCart(a)} 
                               className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
                             >
                               Add to cart
@@ -784,7 +841,7 @@ export default function POSPage() {
                             <Button 
                               size="sm" 
                               variant="outline" 
-                              onClick={() => markFinishedRecorded(a.id)} 
+                              onClick={() => confirmMarkRecorded(a.id)} 
                               className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
                             >
                               Mark recorded
@@ -1246,6 +1303,22 @@ export default function POSPage() {
             <Button onClick={handleServiceSubmit} disabled={!editingService?.name || !editingService?.price}>
               {editingService?.id ? "Save Changes" : "Add Service"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Dialog */}
+      <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{confirmTitle}</DialogTitle>
+            <DialogDescription>
+              {confirmMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConfirmOpen(false)}>Cancel</Button>
+            <Button onClick={handleConfirm}>Confirm</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

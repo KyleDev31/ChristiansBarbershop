@@ -5,7 +5,7 @@ This document explains how to set up the automatic appointment reminder system f
 ## Features
 
 - **Email Reminders**: Sends professional HTML email reminders to customers
-- **SMS Reminders**: Sends text message reminders via Twilio
+- **SMS Reminders**: Sends text message reminders via Vonage (primary) with fallbacks
 - **Automatic Scheduling**: Daily cron job to send reminders for tomorrow's appointments
 - **Manual Trigger**: Admin can manually send reminders from the appointments page
 - **Detailed Reporting**: Shows success/failure status for each reminder sent
@@ -21,12 +21,14 @@ Add the following environment variables to your `.env.local` file:
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASS=kwjwflomxdfrbgul  # Use App Password, not regular password
 
-# SMS Chef Configuration (Primary SMS Provider)
-SMS_CHEF_API_KEY=your_sms_chef_api_key
-SMS_CHEF_SENDER=your_sender_name_or_number
-SMS_CHEF_BASE_URL=https://api.smschef.com
+# Vonage Configuration (Primary SMS Provider)
+VONAGE_API_KEY=your_vonage_api_key
+VONAGE_API_SECRET=your_vonage_api_secret
+VONAGE_FROM=ChristianBarber
+# Optional helper to normalize local numbers like 09xxxxxxxxx -> +63xxxxxxxxx
+VONAGE_DEFAULT_COUNTRY_CODE=63
 
-# Twilio Configuration (Fallback)
+# Twilio Configuration (Final Fallback)
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
@@ -47,15 +49,12 @@ NEXTAUTH_URL=http://localhost:3000  # or your production URL
    - Generate a new app password for "Mail"
    - Use this password in `EMAIL_PASS`
 
-### 3. SMS Chef Setup (Primary SMS Provider)
+### 3. Vonage Setup (Primary SMS Provider)
 
-1. Sign up for an SMS Chef account at https://www.smschef.com
-2. Get your API key from the SMS Chef dashboard
-3. Set up your sender name or number
-4. Add these credentials to your environment variables:
-   - `SMS_CHEF_API_KEY`: Your API key from SMS Chef dashboard
-   - `SMS_CHEF_SENDER`: Your sender name or phone number
-   - `SMS_CHEF_BASE_URL`: API base URL (usually https://api.smschef.com)
+1. Create an account at https://www.vonage.com/
+2. Get your API Key and Secret from the dashboard
+3. Optionally set an alphanumeric sender in `VONAGE_FROM`
+4. Set `VONAGE_DEFAULT_COUNTRY_CODE` to normalize local numbers to E.164
 
 ### 4. Twilio Setup (Fallback SMS Provider)
 

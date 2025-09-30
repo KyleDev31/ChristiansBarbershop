@@ -284,8 +284,8 @@ const handleConfirmDelete = async () => {
           <CardContent>
             <div className="space-y-4">
               {appointments.map((appointment) => (
-                <div key={appointment.id} className="flex items-center p-3 border rounded-lg">
-                  <div className="mr-4">
+                <div key={appointment.id} className="flex flex-col sm:flex-row items-start sm:items-center p-3 border rounded-lg gap-3 sm:gap-4">
+                  <div className="sm:mr-2">
                     <div
                       className={`w-3 h-3 rounded-full ${
                         appointment.status === "completed"
@@ -298,13 +298,15 @@ const handleConfirmDelete = async () => {
                       }`}
                     />
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{appointment.email}</p>
-                    <p className="text-sm text-muted-foreground">{appointment.serviceName} {appointment.barber && `with ${appointment.barber}`}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate" title={appointment.email}>{appointment.email}</p>
+                    <p className="text-sm text-muted-foreground break-words">
+                      {appointment.serviceName} {appointment.barber && `with ${appointment.barber}`}
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium">{appointment.time}</p>
-                    <p className="text-sm text-muted-foreground capitalize">{appointment.status}</p>
+                  <div className="w-full sm:w-auto sm:text-right">
+                    <p className="font-medium whitespace-nowrap">{appointment.time}</p>
+                    <p className="text-sm text-muted-foreground capitalize whitespace-nowrap">{appointment.status}</p>
                   </div>
                 </div>
               ))}

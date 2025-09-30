@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore
 import { db } from '@/lib/firebase'
 import { format, addDays, startOfDay, endOfDay } from 'date-fns'
 import nodemailer from 'nodemailer'
-import twilio from 'twilio'
+import { createNotification } from '@/lib/notifications'
 
 // Email configuration
 const emailTransporter = nodemailer.createTransport({
@@ -14,16 +14,9 @@ const emailTransporter = nodemailer.createTransport({
   }
 })
 
-// SMS configuration
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-)
-
 interface Appointment {
   id: string
   email: string
-  phone?: string
   name: string
   customerName: string
   barber: string
@@ -106,9 +99,7 @@ export async function POST(request: NextRequest) {
         id: appointment.id,
         name: appointment.name || appointment.customerName,
         email: appointment.email,
-        phone: appointment.phone,
         emailStatus: 'not_sent',
-        smsStatus: 'not_sent',
         error: null as string | null
       }
       
@@ -127,21 +118,27 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Send SMS reminder
-        if (appointment.phone) {
-          try {
-            await sendSMSReminder(appointment)
-            result.smsStatus = 'sent'
-            if (result.emailStatus !== 'sent') sentCount++
-            console.log(`✅ SMS sent successfully to ${appointment.phone}`)
-          } catch (smsError) {
-            result.smsStatus = 'failed'
-            result.error = result.error ? `${result.error}; SMS failed: ${smsError}` : `SMS failed: ${smsError}`
-            console.error('SMS send failed:', smsError)
-          }
-        } else {
-          result.smsStatus = 'no_phone'
-          console.log(`⚠️ No phone number for appointment ${appointment.id}`)
+        // Create in-app notification
+        try {
+          const isToday = appointment.date === format(new Date(), 'MMMM d, yyyy')
+          const reminderType = isToday ? 'today' : 'tomorrow'
+          
+          await createNotification({
+            targetEmail: appointment.email,
+            title: `Appointment Reminder - ${reminderType === 'today' ? 'Today' : 'Tomorrow'}`,
+            body: `You have an appointment ${reminderType} at ${appointment.time} with ${appointment.barber} for ${appointment.serviceName}.`,
+            type: 'reminder',
+            data: {
+              appointmentId: appointment.id,
+              appointmentDate: appointment.date,
+              appointmentTime: appointment.time,
+              barber: appointment.barber,
+              serviceName: appointment.serviceName
+            }
+          })
+          console.log(`✅ In-app notification created for appointment ${appointment.id}`)
+        } catch (notificationError) {
+          console.error('Failed to create in-app notification:', notificationError)
         }
         
       } catch (error) {
@@ -229,129 +226,4 @@ async function sendEmailReminder(appointment: Appointment) {
   }
   
   await emailTransporter.sendMail(emailContent)
-}
-
-async function sendSMSReminder(appointment: Appointment) {
-  const message = `Hi! This is a reminder about your appointment at Christian's Barbershop tomorrow (${appointment.date}) at ${appointment.time} with ${appointment.barber} for ${appointment.serviceName}. Please arrive 10 minutes early. Call (123) 456-7890 if you need to reschedule.`
-  
-  // Validate phone number
-  if (!appointment.phone) {
-    throw new Error('No phone number provided for SMS reminder')
-  }
-  
-  // Format phone number (ensure it starts with +)
-  let phoneNumber = appointment.phone.trim()
-  if (!phoneNumber.startsWith('+')) {
-    // If it doesn't start with +, assume it's a US number and add +1
-    if (phoneNumber.length === 10) {
-      phoneNumber = '+1' + phoneNumber
-    } else if (phoneNumber.length === 11 && phoneNumber.startsWith('1')) {
-      phoneNumber = '+' + phoneNumber
-    } else {
-      phoneNumber = '+' + phoneNumber
-    }
-  }
-  
-  console.log(`Sending SMS to: ${phoneNumber}`)
-  
-  // Try SMS Chef first, then fallback to other providers
-  const smsChefApiKey = process.env.SMS_CHEF_API_KEY
-  const smsChefSender = process.env.SMS_CHEF_SENDER || 'ChristianBarber'
-  const smsChefBaseUrl = process.env.SMS_CHEF_BASE_URL || 'https://api.smschef.com'
-
-  if (smsChefApiKey) {
-    try {
-      console.log('Using SMS Chef API for SMS sending')
-      
-      // SMS Chef API payload (adjust based on their actual API documentation)
-      const payload = {
-        to: phoneNumber,
-        message: message,
-        from: smsChefSender,
-        // Add any other required fields based on SMS Chef API documentation
-      }
-
-      const res = await fetch(smsChefBaseUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${smsChefApiKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      })
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        console.error('SMS Chef send failed', res.status, data)
-        throw new Error(`SMS Chef error: ${res.status} ${JSON.stringify(data)}`)
-      }
-
-      console.log('SMS sent successfully via SMS Chef:', data)
-      return data
-    } catch (err) {
-      console.error('SMS Chef SMS error:', err)
-      // Don't throw here, fallback to other providers
-    }
-  }
-
-  // Fallback to Infobip if SMS Chef fails or not configured
-  const infoBipKey = process.env.INFOBIP_API_KEY
-  const infoBipSender = process.env.INFOBIP_SENDER || process.env.TWILIO_PHONE_NUMBER?.trim() || 'ChristianBarber'
-  const infoBipBase = process.env.INFOBIP_BASE_URL || 'https://api.infobip.com'
-
-  if (infoBipKey) {
-    try {
-      console.log('Using Infobip API for SMS sending')
-      const payload = {
-        messages: [
-          {
-            from: infoBipSender,
-            destinations: [{ to: phoneNumber }],
-            text: message
-          }
-        ]
-      }
-
-      // Ensure the base URL has https:// protocol
-      const baseUrl = infoBipBase.startsWith('http') ? infoBipBase : `https://${infoBipBase}`
-      const res = await fetch(`${baseUrl}/sms/2/text/advanced`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `App ${infoBipKey}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      })
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        console.error('Infobip send failed', res.status, data)
-        throw new Error(`Infobip error: ${res.status} ${JSON.stringify(data)}`)
-      }
-
-      console.log('SMS sent successfully via Infobip:', data)
-      return data
-    } catch (err) {
-      console.error('Infobip SMS error:', err)
-      // Don't throw here, fallback to Twilio
-    }
-  }
-
-  // Final fallback to Twilio
-  const twilioFromNumber = process.env.TWILIO_PHONE_NUMBER?.trim()
-  if (!twilioFromNumber) {
-    throw new Error('No SMS provider configured. Please set up SMS Chef, Infobip, or Twilio credentials.')
-  }
-  
-  console.log('Using Twilio API for SMS sending')
-  const result = await twilioClient.messages.create({
-    body: message,
-    from: twilioFromNumber,
-    to: phoneNumber
-  })
-  
-  console.log('SMS sent successfully via Twilio:', result.sid)
-  return result
 }

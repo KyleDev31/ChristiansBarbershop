@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { SiteHeader } from "@/components/site-header" // added import
 import { toast } from "@/hooks/use-toast"
+import { createNotification } from '@/lib/notifications'
 import { useBarber } from '@/hooks/useBarber'
 
 type Appointment = {
@@ -103,198 +104,189 @@ export default function BarberDashboard() {
     return () => unsub()
   }, [])
 
-  // helper: check if an appointment belongs to the current auth user (barber)
-  function isAppointmentForUser(data: any, user: User | null, profile: UserProfile) {
-    if (!user || !data) return false
-
-    const normalize = (s?: any) => (s ?? "").toString().trim().toLowerCase()
-
-    // appointment barber values
-    let apptBarberName = ""
-    if (typeof data.barber === "string") {
-      apptBarberName = normalize(data.barber)
-    } else if (data.barber && typeof data.barber === "object") {
-      apptBarberName = normalize(data.barber.name || data.barber.displayName || data.barber.fullName)
-    }
-    const apptBarberId = data.barberId != null ? String(data.barberId) : ""
-    const apptBarberEmail = normalize(data.barberEmail || data.barber_email)
-
-    // build candidate names/emails/ids from signed-in user + profile
-    const candidates = new Set<string>()
-    if (user.displayName) candidates.add(normalize(user.displayName))
-    if (user.email) candidates.add(normalize(user.email))
-    // add first-name variants
-    if (user.displayName) candidates.add(normalize(user.displayName).split(" ")[0])
-
-    if (profile) {
-      if ((profile as any).fullName) candidates.add(normalize((profile as any).fullName))
-      if ((profile as any).displayName) candidates.add(normalize((profile as any).displayName))
-      if ((profile as any).fullName) candidates.add(normalize((profile as any).fullName).split(" ")[0])
-      // allow numeric/alternate ids stored on profile (barberId, employeeId)
-      if ((profile as any).barberId != null) candidates.add(String((profile as any).barberId))
-      if ((profile as any).employeeId != null) candidates.add(String((profile as any).employeeId))
-    }
-
-    const userUid = String(user.uid)
-
-    // direct matches
-    if (apptBarberId && (apptBarberId === userUid || candidates.has(apptBarberId))) return true
-    if (apptBarberEmail && candidates.has(apptBarberEmail)) return true
-    if (apptBarberName && candidates.has(apptBarberName)) return true
-
-    // tolerant matching: compare first names (e.g., "noel", "abel", "jayboy")
-    const firstName = normalize((profile as any).fullName || user.displayName || user.email).split(" ")[0]
-    if (apptBarberName && firstName && apptBarberName === firstName) return true
-
-    // known nicknames fallback
-    const nicknames = ["Noel", "Abel", "JayBoy"]
-    if (apptBarberName && nicknames.includes(apptBarberName) && nicknames.includes(firstName)) return true
-
-    return false
-  }
 
   useEffect(() => {
     if (!user) return
     
-    // Check if the logged-in user is JayBoy
-    const isJayBoy = user.email === "jayboy@gmail.com"
+    // Get barber name from profile or user display name
+    let barberName = profile.fullName || user.displayName || user.email?.split('@')[0] || ''
     
-    if (isJayBoy) {
-      // Queue (queued + in-progress) - query for JayBoy's appointments
-      const qQueue = query(
-        collection(db, "appointments"),
-        where("status", "in", ["queued", "in-progress"]),
-        where("barber", "==", "JayBoy")
-      )
-      const unsubQueue = onSnapshot(qQueue, (snap) => {
-        const items = snap.docs
-          .map((d) => {
-            const data: any = d.data()
-            return {
-              id: d.id,
-              customerName: data.customerName || data.customer || data.email || "Customer",
-              status: data.status || "queued",
-              scheduledAt: data.scheduledAt,
-              position: data.position,
-              notes: data.notes,
-              serviceName: data.serviceName || "Service",
-              time: data.time || "",
-              date: data.date || "",
-              raw: data,
-            }
-          })
-
-        const sorted = items.sort((a, b) => {
-          if (a.position != null && b.position != null) return a.position - b.position
-          if (a.scheduledAt && b.scheduledAt) return a.scheduledAt.toDate().getTime() - b.scheduledAt.toDate().getTime()
-          return 0
-        })
-        setQueue(sorted)
-      })
-
-             // All appointments for JayBoy
-       const qAll = query(
-         collection(db, "appointments"), 
-         where("barber", "==", "JayBoy")
-       )
-             const unsubAll = onSnapshot(qAll, (snap) => {
-         const items = snap.docs
-           .map((d) => {
-             const data: any = d.data()
-             return {
-               id: d.id,
-               customerName: data.customerName || data.customer || data.email || "Customer",
-               status: data.status || "queued",
-               scheduledAt: data.scheduledAt,
-               position: data.position,
-               notes: data.notes,
-               serviceName: data.serviceName || "Service",
-               time: data.time || "",
-               date: data.date || "",
-               raw: data,
-             }
-           })
-
-        // Sort all items by scheduledAt in descending order first
-        const sortedItems = items.sort((a, b) => {
-          if (!a.scheduledAt && !b.scheduledAt) return 0
-          if (!a.scheduledAt) return 1
-          if (!b.scheduledAt) return -1
-          return b.scheduledAt.toDate().getTime() - a.scheduledAt.toDate().getTime()
+    // Map email addresses to the correct barber names used in appointments
+    const emailToBarberName: { [key: string]: string } = {
+      'noel@gmail.com': 'Noel',
+      'abel@gmail.com': 'Abel', 
+      'jayboy@gmail.com': 'JayBoy'
+    }
+    
+    // Use the mapped name if available, otherwise use the computed name
+    if (user?.email && emailToBarberName[user.email]) {
+      barberName = emailToBarberName[user.email]
+    }
+    
+    // Debug logging
+    console.log('Barber dashboard - Current user:', user?.email)
+    console.log('Barber dashboard - Profile fullName:', profile.fullName)
+    console.log('Barber dashboard - User displayName:', user.displayName)
+    console.log('Barber dashboard - Computed barberName:', barberName)
+    
+    // Queue (queued + in-progress) - query for current barber's appointments
+    const qQueue = query(
+      collection(db, "appointments"),
+      where("status", "in", ["queued", "in-progress"]),
+      where("barber", "==", barberName)
+    )
+    const unsubQueue = onSnapshot(qQueue, (snap) => {
+      console.log('Queue query - Found', snap.docs.length, 'appointments for barber:', barberName)
+      const items = snap.docs
+        .map((d) => {
+          const data: any = d.data()
+          console.log('Queue appointment data:', { id: d.id, barber: data.barber, customerName: data.customerName })
+          return {
+            id: d.id,
+            customerName: data.customerName || data.customer || data.email || "Customer",
+            status: data.status || "queued",
+            scheduledAt: data.scheduledAt,
+            position: data.position,
+            notes: data.notes,
+            serviceName: data.serviceName || "Service",
+            time: data.time || "",
+            date: data.date || "",
+            raw: data,
+          }
         })
 
-        const past = sortedItems.filter((i) => i.status === "completed" || (i.scheduledAt && i.scheduledAt.toDate() < new Date()))
-        const upcoming = sortedItems.filter((i) => !(i.status === "completed" || (i.scheduledAt && i.scheduledAt.toDate() < new Date())))
-        setPastAppointments(past)
-        setAppointments(upcoming)
+      const sorted = items.sort((a, b) => {
+        if (a.position != null && b.position != null) return a.position - b.position
+        if (a.scheduledAt && b.scheduledAt) return a.scheduledAt.toDate().getTime() - b.scheduledAt.toDate().getTime()
+        return 0
       })
+      setQueue(sorted)
+    })
 
-      return () => {
-        unsubQueue()
-        unsubAll()
-      }
-    } else {
-      // For other barbers, use the original complex filtering logic
-      const qQueue = query(
-        collection(db, "appointments"),
-        where("status", "in", ["queued", "in-progress"])
-      )
-      const unsubQueue = onSnapshot(qQueue, (snap) => {
-        const items = snap.docs
-          .map((d) => {
-            const data: any = d.data()
-            return {
-              id: d.id,
-              customerName: data.customerName || data.customer || "Customer",
-              status: data.status || "queued",
-              scheduledAt: data.scheduledAt,
-              position: data.position,
-              notes: data.notes,
-              raw: data,
-            }
-          })
-          .filter((item) => isAppointmentForUser(item.raw, user, profile))
-
-        const sorted = items.sort((a, b) => {
-          if (a.position != null && b.position != null) return a.position - b.position
-          if (a.scheduledAt && b.scheduledAt) return a.scheduledAt.toDate().getTime() - b.scheduledAt.toDate().getTime()
-          return 0
+    // First, let's check what appointments exist for debugging
+    const debugQuery = query(collection(db, "appointments"))
+    const unsubDebug = onSnapshot(debugQuery, (snap) => {
+      console.log('=== ALL APPOINTMENTS DEBUG ===')
+      snap.docs.forEach(doc => {
+        const data = doc.data()
+        console.log(`Appointment ${doc.id}:`, {
+          barber: data.barber,
+          customerName: data.customerName,
+          status: data.status,
+          date: data.date,
+          time: data.time
         })
-        setQueue(sorted)
+      })
+      console.log('=== END DEBUG ===')
+    })
+
+    // All appointments for current barber
+    const qAll = query(
+      collection(db, "appointments"), 
+      where("barber", "==", barberName)
+    )
+    const unsubAll = onSnapshot(qAll, (snap) => {
+      console.log('All appointments query - Found', snap.docs.length, 'appointments for barber:', barberName)
+      const items = snap.docs
+        .map((d) => {
+          const data: any = d.data()
+          console.log('All appointments data:', { id: d.id, barber: data.barber, customerName: data.customerName, status: data.status })
+          return {
+            id: d.id,
+            customerName: data.customerName || data.customer || data.email || "Customer",
+            status: data.status || "queued",
+            scheduledAt: data.scheduledAt,
+            position: data.position,
+            notes: data.notes,
+            serviceName: data.serviceName || "Service",
+            time: data.time || "",
+            date: data.date || "",
+            raw: data,
+          }
+        })
+
+      // Sort all items by scheduledAt in descending order first
+      const sortedItems = items.sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0
+        if (!a.scheduledAt) return 1
+        if (!b.scheduledAt) return -1
+        return b.scheduledAt.toDate().getTime() - a.scheduledAt.toDate().getTime()
       })
 
-      const qAll = query(collection(db, "appointments"), orderBy("scheduledAt", "desc"))
-      const unsubAll = onSnapshot(qAll, (snap) => {
-        const items = snap.docs
-          .map((d) => {
-            const data: any = d.data()
-            return {
-              id: d.id,
-              customerName: data.customerName || data.customer || "Customer",
-              status: data.status || "queued",
-              scheduledAt: data.scheduledAt,
-              position: data.position,
-              notes: data.notes,
-              raw: data,
-            }
-          })
-          .filter((item) => isAppointmentForUser(item.raw, user, profile))
+      // Debug: Log all items before filtering
+      console.log('All items before filtering:', sortedItems.map(i => ({
+        id: i.id,
+        status: i.status,
+        scheduledAt: i.scheduledAt,
+        date: i.date,
+        time: i.time,
+        customerName: i.customerName
+      })))
 
-        const past = items.filter((i) => i.status === "completed" || (i.scheduledAt && i.scheduledAt.toDate() < new Date()))
-        const upcoming = items.filter((i) => !(i.status === "completed" || (i.scheduledAt && i.scheduledAt.toDate() < new Date())))
-        setPastAppointments(past)
-        setAppointments(
-          upcoming.sort((a, b) => {
-            if (!a.scheduledAt || !b.scheduledAt) return 0
-            return a.scheduledAt.toDate().getTime() - b.scheduledAt.toDate().getTime()
-          })
-        )
+      // Filter appointments based on status and date
+      const now = new Date()
+      const past = sortedItems.filter((i) => {
+        const isCompleted = i.status === "completed" || i.status === "cancelled"
+        const isPastDate = i.scheduledAt && i.scheduledAt.toDate() < now
+        const isPastByDateField = i.date && i.time && (() => {
+          try {
+            const appointmentDate = new Date(`${i.date} ${i.time}`)
+            return appointmentDate < now
+          } catch {
+            return false
+          }
+        })()
+        
+        console.log(`Appointment ${i.id}:`, {
+          status: i.status,
+          isCompleted,
+          isPastDate,
+          isPastByDateField,
+          scheduledAt: i.scheduledAt,
+          date: i.date,
+          time: i.time
+        })
+        
+        return isCompleted || isPastDate || isPastByDateField
       })
+      
+      const upcoming = sortedItems.filter((i) => {
+        const isCompleted = i.status === "completed" || i.status === "cancelled"
+        const isPastDate = i.scheduledAt && i.scheduledAt.toDate() < now
+        const isPastByDateField = i.date && i.time && (() => {
+          try {
+            const appointmentDate = new Date(`${i.date} ${i.time}`)
+            return appointmentDate < now
+          } catch {
+            return false
+          }
+        })()
+        
+        // For now, let's show all non-completed appointments in upcoming
+        // This will help us see if the issue is with date filtering
+        const isUpcoming = !isCompleted
+        
+        console.log(`Upcoming check for ${i.id}:`, {
+          status: i.status,
+          isCompleted,
+          isUpcoming,
+          scheduledAt: i.scheduledAt,
+          date: i.date,
+          time: i.time
+        })
+        
+        return isUpcoming
+      })
+      
+      console.log('Filtered appointments - Past:', past.length, 'Upcoming:', upcoming.length)
+      setPastAppointments(past)
+      setAppointments(upcoming)
+    })
 
-      return () => {
-        unsubQueue()
-        unsubAll()
-      }
+    return () => {
+      unsubQueue()
+      unsubAll()
+      unsubDebug()
     }
   }, [user, profile]) // include profile so filtering waits for loaded profile
 
@@ -306,7 +298,6 @@ export default function BarberDashboard() {
         displayName: profile.fullName || "",
         photoURL: profile.photoURL || "",
         bio: profile.bio || "",
-        phone: profile.phone || "",
         skills: profile.skills || [],
       })
 
@@ -347,6 +338,17 @@ export default function BarberDashboard() {
     try {
       await updateDoc(doc(db, "appointments", id), { status: "completed", completedAt: Timestamp.fromDate(new Date()) })
       toast({ title: "Marked completed", description: "Appointment marked as completed." })
+      try {
+        const appt = appointments.find(a => a.id === id) || queue.find(a => a.id === id)
+        await createNotification({
+          userId: undefined,
+          targetEmail: appt?.raw?.email || appt?.raw?.customerEmail || undefined,
+          title: 'Appointment Completed',
+          body: `Your appointment ${appt?.serviceName ? `for ${appt?.serviceName}` : ''} has been marked completed.`,
+          type: 'completed',
+          data: { appointmentId: id }
+        })
+      } catch {}
     } catch (err) {
       console.error("Failed to mark completed", err)
       toast({ title: "Mark failed", description: "Could not mark appointment as completed.", variant: "destructive" })
@@ -358,6 +360,17 @@ export default function BarberDashboard() {
     try {
       await updateDoc(doc(db, "appointments", id), { status: "cancelled", cancelledAt: Timestamp.fromDate(new Date()) })
       toast({ title: "Appointment cancelled", description: "Appointment has been cancelled." })
+      try {
+        const appt = appointments.find(a => a.id === id) || queue.find(a => a.id === id)
+        await createNotification({
+          userId: undefined,
+          targetEmail: appt?.raw?.email || appt?.raw?.customerEmail || undefined,
+          title: 'Appointment Cancelled',
+          body: `Your appointment ${appt?.serviceName ? `for ${appt?.serviceName}` : ''} has been cancelled.`,
+          type: 'cancelled',
+          data: { appointmentId: id }
+        })
+      } catch {}
     } catch (err) {
       console.error("Failed to cancel appointment", err)
       toast({ title: "Cancel failed", description: "Could not cancel appointment.", variant: "destructive" })
@@ -417,14 +430,14 @@ export default function BarberDashboard() {
   return (
     <>
       <SiteHeader /> {/* navigation added at top of page */}
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
         <h1 className="text-3xl font-bold mb-6">Barber's Profile</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left - Profile card */}
           <div className="col-span-1">
             <div className="bg-white rounded-lg border p-6 shadow-sm">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
                 <img
                   src={profile.photoURL || "/placeholder.svg"}
                   alt={profile.fullName || "Barber"}
@@ -441,7 +454,6 @@ export default function BarberDashboard() {
                 <div className="text-sm text-muted-foreground">Contact</div>
                 <div className="mt-2">
                   <div className="text-sm"><strong>Email:</strong> {roleUser?.email ?? user?.email ?? '—'}</div>
-                  <div className="text-sm"><strong>Phone:</strong> {profile.phone || "—"}</div>
                 </div>
               </div>
 
@@ -456,7 +468,7 @@ export default function BarberDashboard() {
                 </div>
               </div>
 
-                <div className="mt-6 flex gap-2 items-center">
+                <div className="mt-6 flex flex-wrap gap-2 items-center">
                 <Button
                   onClick={() => (document.getElementById("profileDialog") as any)?.showModal()}
                   disabled={savingProfile}
@@ -477,7 +489,7 @@ export default function BarberDashboard() {
                   boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
                 }}
                 >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
                   <div>
                   <h3 className="text-lg font-medium mb-1">Edit Profile</h3>
                   <p className="text-sm text-muted-foreground">Update your barber profile.</p>
@@ -531,14 +543,7 @@ export default function BarberDashboard() {
                   </div>
                   </div>
 
-                  <div>
-                  <label className="block text-sm font-medium mb-1">Phone</label>
-                  <input
-                    className="w-full border rounded px-3 py-2"
-                    value={profile.phone || ""}
-                    onChange={(e) => setProfile((p) => ({ ...p, phone: e.target.value }))}
-                  />
-                  </div>
+                  
 
                   <div>
                   <label className="block text-sm font-medium mb-1">Bio</label>
@@ -602,7 +607,7 @@ export default function BarberDashboard() {
                   <div className="text-sm text-muted-foreground">No upcoming appointments.</div>
                 ) : (
                   appointments.map((a) => (
-                    <div key={a.id} className="border rounded p-4 flex justify-between items-center">
+                    <div key={a.id} className="border rounded p-4 flex flex-col sm:flex-row sm:justify-between gap-3">
                       <div>
                         <div className="font-medium">{a.customerName}</div>
                         <div className="text-sm text-muted-foreground">
@@ -613,9 +618,9 @@ export default function BarberDashboard() {
                         </div>
                         {a.notes && <div className="text-xs text-muted-foreground mt-1">Notes: {a.notes}</div>}
                       </div>
-                      <div className="text-right flex flex-col items-end gap-2">
+                      <div className="text-left sm:text-right flex flex-col items-start sm:items-end gap-2">
                         <div className="text-sm mb-1">{a.status}</div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
                             className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
@@ -678,7 +683,7 @@ export default function BarberDashboard() {
                       .map((a) => {
                         const cd = getCompletedDate(a)
                         return (
-                          <li key={a.id} className="border rounded-3xl p-3 flex justify-between items-center bg-white shadow-sm">
+                          <li key={a.id} className="border rounded-3xl p-3 flex flex-col sm:flex-row sm:justify-between gap-2 bg-white shadow-sm">
                             <div>
                               <div className="text-sm text-muted-foreground">
                                 {a.raw?.email || a.raw?.customerEmail || a.raw?.emailAddress || (cd ? formatDate(cd, 'PPP p') : '—')}

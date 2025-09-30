@@ -20,8 +20,7 @@ const db = getFirestore(app);
 const registerUser  = async (
   email: string, 
   password: string, 
-  fullName: string, 
-  phone: string
+  fullName: string
 ) => {
   const auth = getAuth(); // this is fine
 
@@ -33,7 +32,6 @@ const registerUser  = async (
       uid: user.uid,
       email: user.email,
       fullName,
-      phone,
       createdAt: new Date(),
       role: "customer",
     });
@@ -71,7 +69,6 @@ export default function RegisterPage() {
     const formData = new FormData(e.currentTarget as HTMLFormElement);
     const fullName = `${formData.get("first-name")} ${formData.get("last-name")}`;
     const email = formData.get("email") as string;
-    const phone = formData.get("phone") as string;
     const password = formData.get("new-password") as string;
     const confirmPassword = formData.get("confirm-password") as string;
 
@@ -88,7 +85,7 @@ export default function RegisterPage() {
     }
 
     try {
-      await registerUser(email, password, fullName, phone);
+      await registerUser(email, password, fullName);
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -147,18 +144,6 @@ export default function RegisterPage() {
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input id="email" name="email" type="email" placeholder="christians@example.com" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone number</Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      placeholder="+63 917 123 4567"
-                      pattern="^(\+63|0)9\d{9}$"
-                      title="Please enter a valid Philippine cellphone number (e.g., +63 917 123 4567 or 09171234567)"
-                      required
-                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="new-password">Password</Label>

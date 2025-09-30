@@ -45,6 +45,16 @@ export default function ServicesPage() {
   const defaultEditForm = { name: "", price: "", description: "", category: "haircut" }
   const [editForm, setEditForm] = useState<{ name: string; price: string; description: string; category: string }>(defaultEditForm)
   const [services, setServices] = useState<Service[]>([])
+  const [addPriceError, setAddPriceError] = useState("")
+  const [editPriceError, setEditPriceError] = useState("")
+
+  const validatePriceInput = (value: string): string => {
+    if (value === "") return ""
+    const num = Number(value)
+    if (!isFinite(num)) return "Enter a valid number."
+    if (num <= 0) return "Price must be greater than 0."
+    return ""
+  }
 
   // Add Service form state
   const [newService, setNewService] = useState({
@@ -103,6 +113,12 @@ export default function ServicesPage() {
 
   // Add Service to Firestore
   const handleAddService = async () => {
+    const priceErr = validatePriceInput(newService.price)
+    if (priceErr) {
+      setAddPriceError(priceErr)
+      toast.error("Enter a valid price greater than 0.")
+      return
+    }
     try {
       const docRef = await addDoc(collection(db, "services"), {
         name: newService.name,
@@ -134,6 +150,7 @@ export default function ServicesPage() {
         category: "haircut",
         image: "",
       })
+      setAddPriceError("")
       toast.success("Service added successfully!")
     } catch (error) {
       toast.error("Failed to add service. Please try again.")
@@ -151,6 +168,12 @@ export default function ServicesPage() {
   // Save edited service to Firestore and update local state
   const handleSaveEditedService = async () => {
     if (!selectedService || !editForm) return;
+    const priceErr = validatePriceInput(editForm.price)
+    if (priceErr) {
+      setEditPriceError(priceErr)
+      toast.error("Enter a valid price greater than 0.")
+      return
+    }
     try {
       const serviceRef = doc(db, "services", selectedService.id);
       const updated = {
@@ -165,6 +188,7 @@ export default function ServicesPage() {
       setIsEditDialogOpen(false)
       setSelectedService(null)
       setEditForm(defaultEditForm)
+      setEditPriceError("")
       toast.success("Service updated")
     } catch (error) {
       console.error("Failed to update service:", error)
@@ -173,7 +197,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <div className="container py-10 ml-4">
+    <div className="container px-4 sm:px-6 py-10">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Services</h1>
         <Button onClick={() => setIsAddDialogOpen(true)}>
@@ -219,52 +243,90 @@ export default function ServicesPage() {
               </TabsList>
 
               <div className="rounded-md border">
-                <div className="grid grid-cols-12 bg-muted p-3 text-sm font-medium">
+                {/* Header (md and up) */}
+                <div className="hidden md:grid grid-cols-12 bg-muted p-3 text-sm font-medium">
                   <div className="col-span-5">Service</div>
                   <div className="col-span-3">Price</div>
                   <div className="col-span-3">Category</div>
                   <div className="col-span-1">Actions</div>
                 </div>
+
                 {filteredServices.length > 0 ? (
-                  filteredServices.map((service) => (
-                    <div key={service.id} className="grid grid-cols-12 p-3 text-sm border-t items-center">
-                      <div className="col-span-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-md flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50 border">
-                            <Scissors className="h-5 w-5 text-muted-foreground" />
+                  <>
+                    {/* Desktop/tablet rows */}
+                    <div className="hidden md:block">
+                      {filteredServices.map((service) => (
+                        <div key={service.id} className="grid grid-cols-12 p-3 text-sm border-t items-center">
+                          <div className="col-span-5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-md flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50 border">
+                                <Scissors className="h-5 w-5 text-muted-foreground" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium truncate" title={service.name}>{service.name}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-1 break-words">{service.description}</div>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="font-medium">{service.name}</div>
-                            <div className="text-xs text-muted-foreground line-clamp-1">{service.description}</div>
+                          <div className="col-span-3 font-medium">₱{service.price}</div>
+                          <div className="col-span-3">
+                            <span className="capitalize">{service.category}</span>
+                          </div>
+                          <div className="col-span-1 flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleEditClick(service)}
+                            >
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Edit</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleDeleteClick(service)}
+                            >
+                              <Trash className="h-4 w-4" />
+                              <span className="sr-only">Delete</span>
+                            </Button>
                           </div>
                         </div>
-                      </div>
-                      <div className="col-span-3 font-medium">₱{service.price}</div>
-                      <div className="col-span-3">
-                        <span className="capitalize">{service.category}</span>
-                      </div>
-                      <div className="col-span-1 flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleEditClick(service)}
-                        >
-                          <Edit className="h-4 w-4" />
-                          <span className="sr-only">Edit</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleDeleteClick(service)}
-                        >
-                          <Trash className="h-4 w-4" />
-                          <span className="sr-only">Delete</span>
-                        </Button>
-                      </div>
+                      ))}
                     </div>
-                  ))
+
+                    {/* Mobile list */}
+                    <div className="md:hidden divide-y">
+                      {filteredServices.map((service) => (
+                        <div key={service.id} className="p-3 text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-md flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-50 border shrink-0">
+                                <Scissors className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium truncate" title={service.name}>{service.name}</div>
+                                <div className="text-xs text-muted-foreground line-clamp-2 break-words">{service.description}</div>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-semibold whitespace-nowrap">₱{service.price}</div>
+                              <div className="text-xs capitalize text-muted-foreground">{service.category}</div>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button variant="secondary" size="sm" onClick={() => handleEditClick(service)}>
+                              <Edit className="h-4 w-4 mr-1" /> Edit
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleDeleteClick(service)}>
+                              <Trash className="h-4 w-4 mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="p-4 text-center text-muted-foreground">No services found matching your criteria.</div>
                 )}
@@ -291,7 +353,7 @@ export default function ServicesPage() {
             <DialogDescription>Create a new service for your barbershop.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Service Name</Label>
                 <Input
@@ -314,11 +376,10 @@ export default function ServicesPage() {
                   <option value="combo">Combo</option>
                   <option value="color">Color</option>
                   <option value="facial">Facial</option>
-                  <option value="addon">Add-on</option>
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="price">Price (₱)</Label>
                 <Input
@@ -326,51 +387,23 @@ export default function ServicesPage() {
                   type="number"
                   placeholder="150"
                   value={newService.price}
-                  onChange={e => setNewService({ ...newService, price: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value
+                    setNewService({ ...newService, price: val })
+                    setAddPriceError(validatePriceInput(val))
+                  }}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <select
-                  id="category"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={newService.category}
-                  onChange={e => setNewService({ ...newService, category: e.target.value })}
-                >
-                  <option value="haircut">Haircut</option>
-                  <option value="beard">Beard</option>
-                  <option value="combo">Combo</option>
-                  <option value="color">Color</option>
-                  <option value="facial">Facial</option>
-                  <option value="addon">Add-on</option>
-                </select>
+                {addPriceError && <div className="text-red-600 text-sm">{addPriceError}</div>}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Describe the service..."
-                value={newService.description}
-                onChange={e => setNewService({ ...newService, description: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="image">Service Image URL</Label>
-              <Input
-                id="image"
-                placeholder="Paste image URL or leave blank"
-                value={newService.image}
-                onChange={e => setNewService({ ...newService, image: e.target.value })}
-              />
-            </div>
+           
             {/* Status is no longer editable from this page */}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddService} disabled={!newService.name || !newService.price}>
+            <Button onClick={handleAddService} disabled={!newService.name || !newService.price || !!addPriceError}>
               Add Service
             </Button>
           </DialogFooter>
@@ -392,7 +425,7 @@ export default function ServicesPage() {
           </DialogHeader>
           {selectedService && (
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-name">Service Name</Label>
                   <Input
@@ -414,7 +447,7 @@ export default function ServicesPage() {
                     <option value="combo">Combo</option>
                     <option value="color">Color</option>
                     <option value="facial">Facial</option>
-                    <option value="addon">Add-on</option>
+                    
                   </select>
                 </div>
               </div>
@@ -425,25 +458,22 @@ export default function ServicesPage() {
                     id="edit-price"
                     type="number"
                     value={editForm.price}
-                    onChange={e => setEditForm({ ...editForm, price: e.target.value })}
+                    onChange={e => {
+                      const val = e.target.value
+                      setEditForm({ ...editForm, price: val })
+                      setEditPriceError(validatePriceInput(val))
+                    }}
                   />
+                  {editPriceError && <div className="text-red-600 text-sm">{editPriceError}</div>}
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-description">Description</Label>
-                <Textarea
-                  id="edit-description"
-                  value={editForm.description}
-                  onChange={e => setEditForm({ ...editForm, description: e.target.value })}
-                />
-              </div>  
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveEditedService} disabled={!editForm.name || !editForm.price}>
+            <Button onClick={handleSaveEditedService} disabled={!editForm.name || !editForm.price || !!editPriceError}>
               Save Changes
             </Button>
           </DialogFooter>

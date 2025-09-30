@@ -52,7 +52,7 @@ const ImportantInfo = () => (
       <p className="font-medium">Important Information:</p>
       <ul className="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
         <li>Please arrive 5 minutes before your appointment</li>
-        <li>You'll receive an SMS reminder 1 hour before your appointment</li>
+        <li>You'll receive an email reminder 1 day before your appointment</li>
         <li>Cancellations must be made at least 2 hours in advance</li>
       </ul>
     </div>

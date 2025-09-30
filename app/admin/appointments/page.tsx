@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { collection, query, where, getDocs, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
-import { format, startOfWeek, addDays, isSameDay, parse, startOfDay, endOfDay, endOfWeek } from "date-fns"
+import { format, startOfWeek, addDays, isSameDay, parse, startOfDay, endOfDay, endOfWeek, isValid } from "date-fns"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ const timeSlots = [
   "8:00 AM", "8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM",
   "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "1:00 PM", "1:30 PM",
   "2:00 PM", "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM",
-  "5:00 PM", "5:30 PM",
+  "5:00 PM", "5:30 PM", "6:00 PM", "6:30 PM", "7:00 PM",
 ]
 
 function getWeekDates(date: Date) {
@@ -105,10 +105,34 @@ export default function AdminAppointmentsPage() {
     return () => { mounted = false }
   }, [selectedDate, view])
 
+  const normalizeDateKey = (dateStr: string | undefined): string | null => {
+    if (!dateStr) return null
+    try {
+      const d = parse(dateStr, 'MMMM d, yyyy', new Date())
+      if (isValid(d)) return format(d, 'MMMM d, yyyy')
+    } catch {}
+    return dateStr
+  }
+
+  const normalizeTimeKey = (timeStr: string | undefined): string | null => {
+    if (!timeStr) return null
+    const candidates = ['h:mm a', 'h:mma', 'h a', 'H:mm']
+    for (const fmt of candidates) {
+      try {
+        const dt = parse(timeStr.replace(/\s+/g, ' ').trim().toUpperCase(), fmt.toUpperCase(), new Date())
+        if (isValid(dt)) {
+          return format(dt, 'h:mm a')
+        }
+      } catch {}
+    }
+    // Fallback: best-effort uppercasing AM/PM spacing
+    return timeStr.toUpperCase().replace(/AM|PM/, (m) => ` ${m}` as any).replace(/\s+/, ' ').trim()
+  }
+
   const appointmentsByDateTime: Record<string, Record<string, any[]>> = {}
   appointments.forEach(appt => {
-    const dateKey = appt.date
-    const timeKey = appt.time
+    const dateKey = normalizeDateKey(appt.date)
+    const timeKey = normalizeTimeKey(appt.time)
     if (!dateKey || !timeKey) return
     if (!appointmentsByDateTime[dateKey]) appointmentsByDateTime[dateKey] = {}
     if (!appointmentsByDateTime[dateKey][timeKey]) appointmentsByDateTime[dateKey][timeKey] = []
@@ -314,7 +338,7 @@ export default function AdminAppointmentsPage() {
                   <div key={r.id} className="p-3 border rounded bg-gray-50">
                     <div className="text-sm font-medium">{r.name}</div>
                     <div className="text-xs text-muted-foreground mt-1">Email: <span className={r.emailStatus === 'sent' ? 'text-green-600' : r.emailStatus === 'failed' ? 'text-red-600' : 'text-gray-500'}>{r.emailStatus}</span>{r.email && ` (${r.email})`}</div>
-                    <div className="text-xs text-muted-foreground">SMS: <span className={r.smsStatus === 'sent' ? 'text-green-600' : r.smsStatus === 'failed' ? 'text-red-600' : 'text-gray-500'}>{r.smsStatus}</span>{r.phone && ` (${r.phone})`}</div>
+                    {/* SMS removed: only email and notifications now */}
                     {r.error && (<div className="text-xs text-red-600 mt-1">{r.error}</div>)}
                   </div>
                 ))}

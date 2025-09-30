@@ -4,6 +4,8 @@ import { Inter } from "next/font/google"
 import { SiteHeader } from "@/components/site-header"
 import { SiteFooter } from "@/components/site-footer"
 import { Separator } from "@radix-ui/react-dropdown-menu"
+import { Toaster } from "@/components/ui/toaster"
+import NotificationsListener from "@/components/notifications-listener"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -29,6 +31,8 @@ export default function RootLayout({
           <div className="relative flex min-h-screen flex-col">
             <div className="flex-1">{children}</div>
           </div>
+          <NotificationsListener />
+          <Toaster />
       </body>
     </html>
   )

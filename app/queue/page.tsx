@@ -147,7 +147,7 @@ const QueueSummary = ({ queue, progress }: { queue: any[]; progress: number }) =
         <div className="flex items-center justify-between">
           <div className="grid gap-1">
             <div className="text-sm font-medium">Current capacity</div>
-            <div className="text-2xl font-bold">{queue.length} / 9</div>
+            <div className="text-2xl font-bold">{queue.length} / 30</div>
           </div>
           <div className="grid gap-1">
             <div className="text-sm font-medium">Average wait time</div>
@@ -157,14 +157,14 @@ const QueueSummary = ({ queue, progress }: { queue: any[]; progress: number }) =
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <div>Capacity</div>
-            <div>{Math.round((queue.length / 9) * 100)}%</div>
+            <div>{Math.round((queue.length / 30) * 100)}%</div>
           </div>
           <Progress value={progress} />
         </div>
         <div className="rounded-md bg-muted p-4">
           <div className="font-medium">Walk-in availability</div>
           <div className="text-sm text-muted-foreground">
-            Walk-ins are currently available with an estimated wait time of 35-45 minutes
+            Walk-ins are currently available with an estimated wait time of 15-25 minutes
           </div>
         </div>
       </div>

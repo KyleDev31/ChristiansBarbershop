@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useSearchParams } from "next/navigation"
-import { User, Calendar, Clock, Scissors, MapPin, Phone, Mail, Edit, QrCode } from "lucide-react"
+import { User, Calendar, Clock, Scissors, MapPin, Mail, Edit, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -39,7 +39,6 @@ export default function ProfilePage() {
   const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [editName, setEditName] = useState("")
-  const [editPhone, setEditPhone] = useState("")
   const [editProfileImage, setEditProfileImage] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -66,7 +65,6 @@ export default function ProfilePage() {
   const [userData, setUserData] = useState<{
     fullName: string
     email: string
-    phone: string
     createdAt: string
     preferredBarber: string
     favoriteService: string
@@ -92,7 +90,6 @@ export default function ProfilePage() {
           setUserData({
             fullName: userDoc.fullName || "",
             email: userDoc.email || "",
-            phone: userDoc.phone || "",
             createdAt: userDoc.createdAt
               ? new Date(userDoc.createdAt.seconds ? userDoc.createdAt.seconds * 1000 : userDoc.createdAt).toLocaleString("default", { month: "long", year: "numeric" })
               : "",
@@ -213,7 +210,6 @@ export default function ProfilePage() {
   // Open edit dialog and prefill fields
   const openEditDialog = () => {
     setEditName(userData?.fullName || "");
-    setEditPhone(userData?.phone || "");
     setEditProfileImage(userData?.profileImage || "");
     setShowEditDialog(true);
   };
@@ -223,18 +219,11 @@ export default function ProfilePage() {
     if (!authSession?.user?.uid) return;
     await updateDoc(doc(db, "users", authSession.user.uid), {
       fullName: editName,
-      phone: editPhone,
       profileImage: editProfileImage || "",
     });
-    setUserData(prev => prev ? { ...prev, fullName: editName, phone: editPhone, profileImage: editProfileImage ? editProfileImage : "", email: prev.email, createdAt: prev.createdAt, preferredBarber: prev.preferredBarber, favoriteService: prev.favoriteService } : prev);
+    setUserData(prev => prev ? { ...prev, fullName: editName, profileImage: editProfileImage ? editProfileImage : "", email: prev.email, createdAt: prev.createdAt, preferredBarber: prev.preferredBarber, favoriteService: prev.favoriteService } : prev);
     setShowEditDialog(false);
   };
-
-  const isValidPhilippinePhone = (phone: string) => {
-  // Accepts: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX (13 digits)
-  const regex = /^(?:\+639\d{9}|09\d{9})$/;
-  return regex.test(phone);
-};
 
   return (
     <div className="container py-10 ml-4">
@@ -261,9 +250,9 @@ export default function ProfilePage() {
     ) : userData ? (
       <>
         {/* Validation Check */}
-        {(!userData.fullName || !userData.phone || !isValidPhilippinePhone(userData.phone)) ? (
+        {(!userData.fullName) ? (
           <div className="text-center text-red-500 font-medium">
-            ⚠ Please update your profile with a valid full name and Philippine phone number.
+            ⚠ Please update your profile with a valid full name.
           </div>
         ) : (
           <>
@@ -288,13 +277,7 @@ export default function ProfilePage() {
                   <p>{userData.email}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Phone className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Phone</p>
-                  <p>{userData.phone}</p>
-                </div>
-              </div>
+              
             </div>
           </>
         )}
@@ -548,14 +531,7 @@ export default function ProfilePage() {
                 onChange={e => setEditName(e.target.value)}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium">Phone</label>
-              <input
-                className="w-full border rounded px-2 py-1"
-                value={editPhone}
-                onChange={e => setEditPhone(e.target.value)}
-              />
-            </div>
+            
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
               <Button onClick={handleSaveProfile} disabled={uploading}>Save</Button>
