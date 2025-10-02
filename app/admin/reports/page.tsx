@@ -47,6 +47,7 @@ export default function ReportsPage() {
   const [productData, setProductData] = useState<any[]>([])
   const [appointmentData, setAppointmentData] = useState<any[]>([])
   const [barberData, setBarberData] = useState<any[]>([])
+  const [barberPeriodData, setBarberPeriodData] = useState<any[]>([])
   const [productSales, setProductSales] = useState(0)
   const [totalAppointments, setTotalAppointments] = useState(0)
   const [completedAppointments, setCompletedAppointments] = useState(0)
@@ -166,24 +167,88 @@ export default function ReportsPage() {
   }, [fromDate, toDate])
 
   useEffect(() => {
-    // Barber metrics: clients count and revenue by barber inferred from sales items (SERVICES ONLY)
+    // Barber metrics: clients count and today's salary by barber inferred from sales items (SERVICES ONLY)
+    // Salary is calculated as 50% of service revenue (50% goes to barber, 50% to shop)
+    // Shows data for today's sales only (first table shows today, second table shows selected period)
     const fetchBarberMetrics = async () => {
       const salesRef = collection(db, "sales")
       const querySnapshot = await getDocs(salesRef)
-      const map: Record<string, { name: string; clients: number; rating: number; revenue: number }> = {}
+      const map: Record<string, { name: string; clients: number; rating: number; revenue: number; dailySalary: number; shopShare: number }> = {}
+      const today = new Date()
+      today.setHours(0, 0, 0, 0) // Set to start of today
+      
       querySnapshot.forEach(doc => {
         const sale = doc.data()
         let saleDate = sale.date
         if (typeof saleDate === "string") saleDate = parseISO(saleDate)
         else if (saleDate && saleDate.toDate) saleDate = saleDate.toDate()
+        
+        // Only process sales from today
+        if (saleDate) {
+          const saleDateOnly = new Date(saleDate)
+          saleDateOnly.setHours(0, 0, 0, 0) // Set to start of sale date
+          
+          if (saleDateOnly.getTime() === today.getTime()) {
+            const barber = (sale.barber || sale.barberName || "Unknown").toString()
+            if (!map[barber]) map[barber] = { name: barber, clients: 0, rating: 0, revenue: 0, dailySalary: 0, shopShare: 0 }
+            
+            // Only count services toward barber salary calculation, not products
+            let serviceRevenue = 0
+            let hasServices = false
+            
+            if (Array.isArray(sale.items)) {
+              sale.items.forEach(item => {
+                if (item.type === "services" || item.type === "service") {
+                  const price = typeof item.price === "number" ? item.price : parseFloat(item.price)
+                  const qty = typeof item.quantity === "number" ? item.quantity : parseInt(item.quantity)
+                  const units = isNaN(qty) ? 1 : qty
+                  serviceRevenue += (isNaN(price) ? 0 : price) * units
+                  hasServices = true
+                }
+              })
+            }
+            
+            // Only count this sale if it contains services
+            if (hasServices) {
+              map[barber].clients += 1
+              map[barber].revenue += serviceRevenue
+              // Calculate 50/50 split: 50% for barber (today's salary), 50% for shop
+              map[barber].dailySalary += serviceRevenue * 0.5
+              map[barber].shopShare += serviceRevenue * 0.5
+            }
+          }
+        }
+      })
+      const list = Object.values(map).sort((a, b) => b.dailySalary - a.dailySalary)
+      setBarberData(list)
+    }
+    fetchBarberMetrics()
+  }, [fromDate, toDate])
+
+  useEffect(() => {
+    // Barber metrics for selected period: clients count and revenue by barber (SERVICES ONLY)
+    // Revenue is calculated as 50% of service revenue (50% goes to barber, 50% to shop)
+    // Shows data for the selected date range
+    const fetchBarberPeriodMetrics = async () => {
+      const salesRef = collection(db, "sales")
+      const querySnapshot = await getDocs(salesRef)
+      const map: Record<string, { name: string; clients: number; rating: number; revenue: number; dailySalary: number; shopShare: number }> = {}
+      
+      querySnapshot.forEach(doc => {
+        const sale = doc.data()
+        let saleDate = sale.date
+        if (typeof saleDate === "string") saleDate = parseISO(saleDate)
+        else if (saleDate && saleDate.toDate) saleDate = saleDate.toDate()
+        
+        // Process sales within the selected date range
         if (
           saleDate &&
           (isEqual(saleDate, fromDate) || isEqual(saleDate, toDate) || (isAfter(saleDate, fromDate) && isBefore(saleDate, toDate)))
         ) {
           const barber = (sale.barber || sale.barberName || "Unknown").toString()
-          if (!map[barber]) map[barber] = { name: barber, clients: 0, rating: 0, revenue: 0 }
+          if (!map[barber]) map[barber] = { name: barber, clients: 0, rating: 0, revenue: 0, dailySalary: 0, shopShare: 0 }
           
-          // Only count services toward barber performance, not products
+          // Only count services toward barber revenue calculation, not products
           let serviceRevenue = 0
           let hasServices = false
           
@@ -203,13 +268,16 @@ export default function ReportsPage() {
           if (hasServices) {
             map[barber].clients += 1
             map[barber].revenue += serviceRevenue
+            // Calculate 50/50 split: 50% for barber, 50% for shop
+            map[barber].dailySalary += serviceRevenue * 0.5
+            map[barber].shopShare += serviceRevenue * 0.5
           }
         }
       })
-      const list = Object.values(map).sort((a, b) => b.revenue - a.revenue)
-      setBarberData(list)
+      const list = Object.values(map).sort((a, b) => b.dailySalary - a.dailySalary)
+      setBarberPeriodData(list)
     }
-    fetchBarberMetrics()
+    fetchBarberPeriodMetrics()
   }, [fromDate, toDate])
 
   useEffect(() => {
@@ -1059,13 +1127,13 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Top Performer</CardTitle>
-                <CardDescription>Highest service revenue</CardDescription>
+                <CardTitle className="text-lg">Top Earner Today</CardTitle>
+                <CardDescription>Highest salary today</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-xl font-bold">{barberData[0]?.name || "—"}</div>
                 <p className="text-xs text-muted-foreground">
-                  {barberData[0]?.revenue != null ? `₱${Number(barberData[0].revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} service revenue` : "No data"}
+                  {barberData[0]?.dailySalary != null ? `₱${Number(barberData[0].dailySalary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} salary today` : "No data"}
                 </p>
               </CardContent>
             </Card>
@@ -1074,33 +1142,24 @@ export default function ReportsPage() {
           <div className="grid grid-cols-1 gap-4 sm:gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Barber Performance</CardTitle>
-                <CardDescription>Service revenue and client metrics (products excluded)</CardDescription>
+                <CardTitle>Barber Salary Today</CardTitle>
+                <CardDescription>Today's earnings from services (50% of service revenue, products excluded)</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <div className="min-w-[320px] sm:min-w-[600px] rounded-md border">
                     <div className="grid grid-cols-4 bg-muted p-2 sm:p-3 text-xs sm:text-sm font-medium">
                       <div className="col-span-1">Barber</div>
-                      <div className="col-span-1">Clients</div>
-                      <div className="col-span-1">Revenue</div>
-                      <div className="col-span-1">Performance</div>
+                      <div className="col-span-1">Clients Today</div>
+                      <div className="col-span-1">Salary Today</div>
+                      <div className="col-span-1">Shop Share Today</div>
                     </div>
                     {barberData.map((barber, index) => (
                       <div key={index} className="grid grid-cols-4 p-2 sm:p-3 text-xs sm:text-sm border-t">
                         <div className="col-span-1 font-medium truncate">{barber.name}</div>
                         <div className="col-span-1">{barber.clients}</div>
-                        <div className="col-span-1 text-xs sm:text-sm">{formatCurrency(barber.revenue)}</div>
-                        <div className="col-span-1">
-                          <div className="w-full bg-muted rounded-full h-2.5">
-                            <div
-                              className="bg-primary h-2.5 rounded-full"
-                              style={{
-                                width: `${(barber.revenue / Math.max(1, ...barberData.map((b) => b.revenue || 0))) * 100}%`,
-                              }}
-                            ></div>
-                          </div>
-                        </div>
+                        <div className="col-span-1 text-xs sm:text-sm">{formatCurrency(barber.dailySalary)}</div>
+                        <div className="col-span-1 text-xs sm:text-sm">{formatCurrency(barber.shopShare)}</div>
                       </div>
                     ))}
                   </div>
@@ -1110,8 +1169,8 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Revenue by Barber</CardTitle>
-                <CardDescription>Performance in selected period</CardDescription>
+                <CardTitle>Barber and Shop Revenue for the Selected Period</CardTitle>
+                <CardDescription>Revenue breakdown (50% barber, 50% shop) for the selected period</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -1119,22 +1178,15 @@ export default function ReportsPage() {
                     <div className="grid grid-cols-4 bg-muted p-2 sm:p-3 text-xs sm:text-sm font-medium">
                       <div>Barber</div>
                       <div>Clients</div>
-                      <div>Revenue</div>
-                      <div>Share</div>
+                      <div>Barber Revenue (50%)</div>
+                      <div>Shop Revenue (50%)</div>
                     </div>
-                    {barberData.map((b, i) => (
+                    {barberPeriodData.map((b, i) => (
                       <div key={i} className="grid grid-cols-4 p-2 sm:p-3 text-xs sm:text-sm border-t">
                         <div className="font-medium truncate">{b.name}</div>
                         <div>{b.clients}</div>
-                        <div className="text-xs sm:text-sm">₱{Number(b.revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        <div>
-                          <div className="w-full bg-muted rounded-full h-2.5">
-                            <div
-                              className="bg-primary h-2.5 rounded-full"
-                              style={{ width: `${(b.revenue / Math.max(1, ...barberData.map(x => x.revenue || 0))) * 100}%` }}
-                            ></div>
-                          </div>
-                        </div>
+                        <div className="text-xs sm:text-sm">₱{Number(b.dailySalary).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="text-xs sm:text-sm">₱{Number(b.shopShare).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                       </div>
                     ))}
                   </div>
