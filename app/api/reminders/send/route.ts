@@ -77,13 +77,24 @@ export async function POST(request: NextRequest) {
     })
     
     const appointments = Array.from(appointmentsMap.values())
+    // Filter out appointments that are already cancelled or completed
+    const uncancelledAppointments = appointments.filter(a => {
+      const status = (a as any).status
+      return status !== 'cancelled' && status !== 'completed'
+    })
+
+    if (uncancelledAppointments.length !== appointments.length) {
+      console.log(`Filtered out ${appointments.length - uncancelledAppointments.length} cancelled/completed appointments`)
+    }
+
+    // Use the filtered list for sending reminders
+    const appointmentsToProcess = uncancelledAppointments
+    console.log(`Found ${appointmentsToProcess.length} appointments to process for ${format(searchDate, 'MMMM d, yyyy')} (raw ${appointments.length})`)
     
-    console.log(`Found ${appointments.length} appointments for ${format(searchDate, 'MMMM d, yyyy')}`)
-    
-    if (appointments.length === 0) {
+    if (appointmentsToProcess.length === 0) {
       return NextResponse.json({
         success: true,
-        message: 'No appointments found for the target date',
+        message: 'No appointments found for the target date (none active)',
         appointments: [],
         sent: 0,
         total: 0
@@ -93,8 +104,11 @@ export async function POST(request: NextRequest) {
     // Send reminders
     const results = []
     let sentCount = 0
+
+  const canSendEmail = !!process.env.EMAIL_USER && !!process.env.EMAIL_PASS
+  if (!canSendEmail) console.warn('EMAIL_USER or EMAIL_PASS not set; skipping email sends')
     
-    for (const appointment of appointments) {
+  for (const appointment of appointmentsToProcess) {
       const result = {
         id: appointment.id,
         name: appointment.name || appointment.customerName,
@@ -103,18 +117,23 @@ export async function POST(request: NextRequest) {
         error: null as string | null
       }
       
-      try {
-        // Send email reminder
+  try {
+        // Send email reminder if configured
         if (appointment.email) {
-          try {
-            await sendEmailReminder(appointment)
-            result.emailStatus = 'sent'
-            sentCount++
-            console.log(`✅ Email sent successfully to ${appointment.email}`)
-          } catch (emailError) {
-            result.emailStatus = 'failed'
-            result.error = `Email failed: ${emailError}`
-            console.error('Email send failed:', emailError)
+          if (!canSendEmail) {
+            result.emailStatus = 'skipped'
+            console.log(`Email skipped for ${appointment.email} because email settings are not configured`)
+          } else {
+            try {
+              await sendEmailReminder(appointment)
+              result.emailStatus = 'sent'
+              sentCount++
+              console.log(`✅ Email sent successfully to ${appointment.email}`)
+            } catch (emailError) {
+              result.emailStatus = 'failed'
+              result.error = `Email failed: ${emailError instanceof Error ? emailError.message : String(emailError)}`
+              console.error('Email send failed:', emailError)
+            }
           }
         }
         
@@ -138,11 +157,12 @@ export async function POST(request: NextRequest) {
           })
           console.log(`✅ In-app notification created for appointment ${appointment.id}`)
         } catch (notificationError) {
-          console.error('Failed to create in-app notification:', notificationError)
+          console.error('Failed to create in-app notification for', appointment.id, notificationError)
         }
         
       } catch (error) {
-        result.error = `General error: ${error}`
+        // Catch any unexpected error for this appointment and record it, but continue processing
+        result.error = `General error: ${error instanceof Error ? error.message : String(error)}`
         console.error('Reminder send failed for appointment:', appointment.id, error)
       }
       

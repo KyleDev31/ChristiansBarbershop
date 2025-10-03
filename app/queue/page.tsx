@@ -147,7 +147,7 @@ const QueueSummary = ({ queue, progress }: { queue: any[]; progress: number }) =
         <div className="flex items-center justify-between">
           <div className="grid gap-1">
             <div className="text-sm font-medium">Current capacity</div>
-            <div className="text-2xl font-bold">{queue.length} / 30</div>
+            <div className="text-2xl font-bold">{queue.length} / 72</div>
           </div>
           <div className="grid gap-1">
             <div className="text-sm font-medium">Average wait time</div>
@@ -157,7 +157,7 @@ const QueueSummary = ({ queue, progress }: { queue: any[]; progress: number }) =
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <div>Capacity</div>
-            <div>{Math.round((queue.length / 30) * 100)}%</div>
+            <div>{Math.round((queue.length / 72) * 100)}%</div>
           </div>
           <Progress value={progress} />
         </div>

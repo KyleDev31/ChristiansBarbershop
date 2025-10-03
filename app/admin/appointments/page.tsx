@@ -29,6 +29,9 @@ export default function AdminAppointmentsPage() {
   const [resultOpen, setResultOpen] = useState(false)
   const [resultData, setResultData] = useState<any | null>(null)
   const [isSendingReminders, setIsSendingReminders] = useState(false)
+  const [absentDialogOpen, setAbsentDialogOpen] = useState(false)
+  const [absentBarber, setAbsentBarber] = useState<string>('')
+  const [isMarkingAbsent, setIsMarkingAbsent] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -149,14 +152,52 @@ export default function AdminAppointmentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetDate: format(addDays(new Date(), 1), 'yyyy-MM-dd') })
       })
-      const result = await response.json()
-      setResultData(result)
-      setResultOpen(true)
+
+      // Try to parse JSON body safely
+      let result: any = null
+      try {
+        result = await response.json()
+      } catch (parseErr) {
+        const text = await response.text().catch(() => '')
+        console.error('Failed to parse reminders response JSON:', parseErr, 'raw text:', text)
+        result = { success: false, error: text || `Server returned ${response.status}` }
+      }
+
+      if (!response.ok) {
+        console.error('Reminders API returned non-OK:', response.status, result)
+        setResultData({ success: false, error: result?.error || `Server error ${response.status}` })
+        setResultOpen(true)
+      } else {
+        setResultData(result)
+        setResultOpen(true)
+      }
     } catch (error) {
-      setResultData({ ok: false, error: error instanceof Error ? error.message : 'Failed to send reminders' })
+      console.error('sendReminders fetch failed', error)
+      setResultData({ success: false, error: error instanceof Error ? error.message : 'Failed to send reminders' })
       setResultOpen(true)
     } finally {
       setIsSendingReminders(false)
+    }
+  }
+
+  const markBarberAbsent = async () => {
+    if (!absentBarber) return
+    setIsMarkingAbsent(true)
+    try {
+      const resp = await fetch('/api/admin/barbers/mark-absent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barber: absentBarber, targetDate: format(selectedDate, 'yyyy-MM-dd'), adminEmail: undefined })
+      })
+      const data = await resp.json()
+      setResultData({ success: data.success, message: data.message, total: data.totalFound || 0, cancelled: data.cancelled || 0 })
+      setResultOpen(true)
+    } catch (err) {
+      setResultData({ success: false, error: err instanceof Error ? err.message : 'Failed to mark absent' })
+      setResultOpen(true)
+    } finally {
+      setIsMarkingAbsent(false)
+      setAbsentDialogOpen(false)
     }
   }
 
@@ -182,12 +223,16 @@ export default function AdminAppointmentsPage() {
             <button className={`px-3 py-1 rounded ${view === 'day' ? 'bg-primary text-white' : 'bg-muted'}`} onClick={() => setView('day')}>Day</button>
             <button className={`px-3 py-1 rounded ${view === 'week' ? 'bg-primary text-white' : 'bg-muted'}`} onClick={() => setView('week')}>Week</button>
           </div>
-          <div className="w-full sm:w-auto">
-            <Button onClick={sendReminders} disabled={isSendingReminders} className="flex items-center gap-2 w-full sm:w-auto">
-              <Bell className="w-4 h-4" />
-              {isSendingReminders ? 'Sending...' : 'Send Tomorrow\'s Reminders'}
-            </Button>
-          </div>
+                <div className="w-full sm:w-auto flex items-center gap-2">
+                  <Button onClick={sendReminders} disabled={isSendingReminders} className="flex items-center gap-2 w-full sm:w-auto">
+                    <Bell className="w-4 h-4" />
+                    {isSendingReminders ? 'Sending...' : 'Send Tomorrow\'s Reminders'}
+                  </Button>
+                  <Button variant="destructive" onClick={() => setAbsentDialogOpen(true)} className="ml-2 hidden sm:inline-flex">
+                    Mark Barber Absent
+                  </Button>
+                  <button className="ml-2 sm:hidden border rounded px-2 py-1" onClick={() => setAbsentDialogOpen(true)}>Mark Absent</button>
+                </div>
         </div>
       </div>
 
@@ -317,16 +362,44 @@ export default function AdminAppointmentsPage() {
       </div>
 
       {/* Result dialog (pop-up) */}
+      {/* Mark Barber Absent dialog */}
+      <Dialog open={absentDialogOpen} onOpenChange={setAbsentDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark Barber Absent</DialogTitle>
+            <DialogDescription>Select a barber and confirm to cancel their appointments for the selected date.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-3">
+            <label className="block text-sm">Barber</label>
+            <select className="w-full border rounded px-3 py-2" value={absentBarber} onChange={(e) => setAbsentBarber(e.target.value)}>
+              <option value="">Select barber</option>
+              <option value="Noel">Noel</option>
+              <option value="Abel">Abel</option>
+              <option value="JayBoy">JayBoy</option>
+            </select>
+            <div className="text-xs text-muted-foreground">Date: {format(selectedDate, 'MMMM d, yyyy')}</div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setAbsentDialogOpen(false)} disabled={isMarkingAbsent}>Cancel</Button>
+              <Button variant="destructive" onClick={markBarberAbsent} disabled={isMarkingAbsent}>{isMarkingAbsent ? 'Processing...' : 'Confirm'}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={resultOpen} onOpenChange={setResultOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{resultData?.success ? 'Reminders Sent Successfully' : 'Reminder Error'}</DialogTitle>
             <DialogDescription>
-              {resultData?.success ? (
-                resultData?.total === 0 ? 'No appointments found for tomorrow.' : `Processed ${resultData?.total} appointments. ${resultData?.sent} reminders sent successfully.`
-              ) : (
-                resultData?.error || 'An error occurred while sending reminders.'
-              )}
+                {resultData?.success ? (
+                  // If this is a mark-absent response it may return cancelled count
+                  resultData?.cancelled != null ? (
+                    resultData?.cancelled === 0 ? 'No appointments were cancelled.' : `Cancelled ${resultData?.cancelled} appointments.`
+                  ) : (
+                    resultData?.total === 0 ? 'No appointments found for tomorrow.' : `Processed ${resultData?.total} appointments. ${resultData?.sent ?? 0} reminders sent.`
+                  )
+                ) : (
+                  resultData?.error || 'An error occurred while sending reminders.'
+                )}
             </DialogDescription>
           </DialogHeader>
 
@@ -342,6 +415,35 @@ export default function AdminAppointmentsPage() {
                     {r.error && (<div className="text-xs text-red-600 mt-1">{r.error}</div>)}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Mark-absent details */}
+            {resultData?.affectedIds && Array.isArray(resultData.affectedIds) && (
+              <div className="mt-3">
+                <h4 className="font-medium text-sm">Affected appointment IDs:</h4>
+                <div className="text-xs text-muted-foreground mt-1 max-h-40 overflow-auto">{resultData.affectedIds.join(', ')}</div>
+              </div>
+            )}
+
+            {resultData?.batchErrors && Array.isArray(resultData.batchErrors) && (
+              <div className="mt-3">
+                <h4 className="font-medium text-sm">Batch errors:</h4>
+                <pre className="text-xs text-red-600 max-h-40 overflow-auto">{JSON.stringify(resultData.batchErrors, null, 2)}</pre>
+              </div>
+            )}
+
+            {resultData?.notifFailures && Array.isArray(resultData.notifFailures) && (
+              <div className="mt-3">
+                <h4 className="font-medium text-sm">Notification failures:</h4>
+                <pre className="text-xs text-red-600 max-h-40 overflow-auto">{JSON.stringify(resultData.notifFailures, null, 2)}</pre>
+              </div>
+            )}
+
+            {resultData?.emailFailures && Array.isArray(resultData.emailFailures) && (
+              <div className="mt-3">
+                <h4 className="font-medium text-sm">Email failures:</h4>
+                <pre className="text-xs text-red-600 max-h-40 overflow-auto">{JSON.stringify(resultData.emailFailures, null, 2)}</pre>
               </div>
             )}
 
