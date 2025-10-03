@@ -258,9 +258,7 @@ export default function HaircutRecommendationsPage() {
                         </CardContent>
                         <CardFooter className="p-4 pt-0">
                           <div className="w-full">
-                            <Button asChild size="sm" className="w-full bg-gray-900 hover:bg-gray-800 text-white">
-                              <Link href="/booking">Book</Link>
-                            </Button>
+                          
                           </div>
                         </CardFooter>
                       </Card>

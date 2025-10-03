@@ -34,7 +34,7 @@ export function SiteFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/book" className="text-muted-foreground hover:text-white">
+                <Link href="/booking" className="text-muted-foreground hover:text-white">
                   Book Appointment
                 </Link>
               </li>
@@ -65,11 +65,7 @@ export function SiteFooter() {
                   My Profile
                 </Link>
               </li>
-              <li>
-                <Link href="/appointments" className="text-muted-foreground hover:text-white">
-                  My Appointments
-                </Link>
-              </li>
+            
             </ul>
           </div>
 

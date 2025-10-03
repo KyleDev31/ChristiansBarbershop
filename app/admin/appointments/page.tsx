@@ -345,28 +345,6 @@ export default function AdminAppointmentsPage() {
               </div>
             )}
 
-            {resultData?.debug && (
-              <div className="mt-4 p-2 rounded bg-yellow-50 text-sm">
-                <div className="font-medium">Debug info:</div>
-                <div className="mt-1">Date string query: <code>{resultData.dateStr}</code></div>
-                <div className="mt-1">Window query results: {resultData.windowCount} found</div>
-                <div className="mt-1">Date query results: {resultData.dateCount} found</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="font-medium">Window docs (first 5):</div>
-                    {resultData.windowDocs?.slice(0, 5).map((doc: any) => (
-                      <div key={doc.id} className="text-xs truncate" title={JSON.stringify(doc)}>{doc.id} - {doc.barber} - {doc.serviceName}</div>
-                    ))}
-                  </div>
-                  <div>
-                    <div className="font-medium">Date docs (first 5):</div>
-                    {resultData.dateDocs?.slice(0, 5).map((doc: any) => (
-                      <div key={doc.id} className="text-xs truncate" title={JSON.stringify(doc)}>{doc.id} - {doc.barber} - {doc.serviceName}</div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           <DialogFooter>

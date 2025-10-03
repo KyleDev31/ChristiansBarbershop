@@ -491,27 +491,52 @@ export default function ReportsPage() {
   const handleConfirmExport = async () => {
     setIsExporting(true)
     setShowConfirm(false)
-    // Ask server to generate the report for the currently selected date range
-    const res = await fetch("/api/export-reports", {
-      method: "POST",
-      body: JSON.stringify({
-        fromDate: fromDate.toISOString(),
-        toDate: toDate.toISOString(),
-      }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-    const blob = await res.blob()
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "reports.xlsx"
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.URL.revokeObjectURL(url)
-    setIsExporting(false)
+    try {
+      // Detect Android WebView or wrappers (Median, ReactNativeWebView). If inside a WebView,
+      // many Android WebViews don't support programmatic blob downloads; navigate to the
+      // GET endpoint which responds with Content-Disposition so the WebView can download it.
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : ""
+      const isAndroid = /Android/i.test(ua)
+      const isWebView = isAndroid && (/wv|webview/i.test(ua) || /Median/i.test(ua)) || typeof (window as any).ReactNativeWebView !== "undefined"
+
+      if (isWebView) {
+        const params = new URLSearchParams({ fromDate: fromDate.toISOString(), toDate: toDate.toISOString() })
+        // Use a full absolute URL to help some WebViews handle downloads
+        const href = `${window.location.origin}/api/export-reports?${params.toString()}`
+        // Navigate to the download URL (WebView should handle Content-Disposition)
+        window.location.href = href
+        return
+      }
+
+      // Desktop / normal browsers: use POST to generate workbook and download via blob
+      const res = await fetch("/api/export-reports", {
+        method: "POST",
+        body: JSON.stringify({
+          fromDate: fromDate.toISOString(),
+          toDate: toDate.toISOString(),
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!res.ok) throw new Error(`Export failed: ${res.status} ${res.statusText}`)
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `Christians-Barbershop Report ${fromDate.toISOString().slice(0,10)} - ${toDate.toISOString().slice(0,10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export error:', err)
+      // Optionally surface an error toast here
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (

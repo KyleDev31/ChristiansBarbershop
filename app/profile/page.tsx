@@ -393,9 +393,6 @@ export default function ProfilePage() {
                           </div>
                           <div className="bg-muted/30 p-4 flex flex-col justify-center items-center md:w-1/4">
                             <p className="font-bold text-lg mb-2">₱{appointment.price}</p>
-                            <Button variant="outline" size="sm" className="w-full" asChild>
-                              <Link href={`/book?service=${appointment.serviceName}`}>Book Again</Link>
-                            </Button>
                           </div>
                         </div>
                       </Card>

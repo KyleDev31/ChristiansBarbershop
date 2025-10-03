@@ -176,7 +176,7 @@ const AppointmentCard = ({ appointment }: { appointment: any | null }) => (
   <Card>
     <CardHeader>
       <CardTitle>Your Appointment</CardTitle>
-      <CardDescription>Check your position in the queue</CardDescription>
+      <CardDescription>Check your appointment status</CardDescription>
     </CardHeader>
     <CardContent>
       {appointment ? (
@@ -333,7 +333,8 @@ export default function QueuePage() {
   useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUserEmail(user?.displayName || "user");
+      // Use the authenticated user's email for appointment matching
+      setUserEmail(user?.email || null);
     });
     return () => unsubscribe();
   }, []);
@@ -344,11 +345,12 @@ export default function QueuePage() {
       setUserAppointment(null);
       return;
     }
-    const active = queue.find(
-      (appt) =>
-        appt.email === userEmail &&
-        (appt.status === "waiting" || appt.status === "in-progress")
-    );
+    const active = queue.find((appt) => {
+      // Compare emails case-insensitively and allow both waiting and in-progress states
+      const apptEmail = (appt.email || appt.customerName || "").toString().toLowerCase();
+      const uEmail = (userEmail || "").toString().toLowerCase();
+      return apptEmail && uEmail && apptEmail === uEmail && (appt.status === "waiting" || appt.status === "in-progress");
+    });
     setUserAppointment(active || null);
   }, [queue, userEmail]);
 

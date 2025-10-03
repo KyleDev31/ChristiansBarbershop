@@ -17,7 +17,7 @@ const ConfirmationDetails = ({ appointmentDate, appointmentTime, barberName, ser
     <div className="rounded-lg bg-white p-4 dark:bg-background">
       <DetailItem icon={<Clock className="h-5 w-5 text-muted-foreground" />} title={appointmentDate} subtitle={`${appointmentTime}`} />
       <DetailItem icon={<User className="h-5 w-5 text-muted-foreground" />} title={barberName} subtitle="Classic Cuts Specialist" />
-      <DetailItem icon={<MapPin className="h-5 w-5 text-muted-foreground" />} title="Christian's Barbershop" subtitle="P-16, Poblacion Nabunturan, Davao" />
+      <DetailItem icon={<MapPin className="h-5 w-5 text-muted-foreground" />} title="Christian's Barbershop" subtitle="P-12, Poblacion Nabunturan, Davao" />
     </div>
     <Separator />
     <div className="space-y-2">

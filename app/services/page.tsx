@@ -170,11 +170,6 @@ function ServiceCard({ service }: ServiceProps) {
         </div>
       </CardContent>
       <CardFooter className="px-4 sm:px-6 pb-4 pt-0">
-        <div className="w-full">
-          <Button asChild className="w-full bg-gray-900 hover:bg-gray-800 text-white font-medium text-sm sm:text-base py-2 sm:py-2">
-            <Link href="/booking">Book Now</Link>
-          </Button>
-        </div>
       </CardFooter>
     </Card>
   )

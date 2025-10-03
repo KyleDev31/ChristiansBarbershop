@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CalendarIcon, ChevronLeft, Scissors } from "lucide-react"
 import { format, parse, isBefore, isSameDay } from "date-fns"
-import { addDoc, collection, serverTimestamp, getDocs, query, where, doc, getDoc } from "firebase/firestore";
+ import { addDoc, collection, serverTimestamp, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase"; 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -160,6 +160,8 @@ export default function BookingPage() {
         price: selectedServiceData?.price,
         style: selectedStyle || null,
         date: formattedDate,
+        // store an ISO date string for robust querying (yyyy-MM-dd)
+        dateIso: format(slotDate, 'yyyy-MM-dd'),
         time: selectedTime,
         status: "waiting",
         estimatedWait: 10,
@@ -167,7 +169,8 @@ export default function BookingPage() {
         email: userEmail,
         phone: userPhone,
         customerName: user?.displayName || userEmail.split('@')[0],
-        scheduledAt: serverTimestamp(),
+        // scheduledAt should be the actual appointment datetime
+        scheduledAt: slotDate,
       });
       setShowSuccess(true)
       setTimeout(() => {

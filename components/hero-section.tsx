@@ -84,7 +84,7 @@ export default function HeroSection() {
               <circle cx="12" cy="12" r="10"></circle>
               <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
-            Open 8am to 5pm, Monday to Saturday
+            Open 8am to 7pm, Monday to Saturday
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Button asChild size="lg" className="w-full sm:w-auto hover:bg-yellow-600 bg-white text-black">
