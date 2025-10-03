@@ -27,6 +27,7 @@ export function UserNav() {
   const { isAdmin } = useAdmin()
   const { isBarber, loading } = useBarber()
   const [notifs, setNotifs] = useState<Notif[]>([])
+  const [notifOpen, setNotifOpen] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -52,12 +53,22 @@ export function UserNav() {
     }
   }
 
+  const handleNotifClick = async (n: Notif) => {
+    try {
+      if (!n.read) await updateDoc(doc(db, 'notifications', n.id), { read: true })
+    } catch (err) {
+      console.error('Failed to mark notification read', err)
+    }
+    // close the popover
+    setNotifOpen(false)
+  }
+
   return (
     <div className="flex items-center gap-2">
       {/* Notifications popover */}
-      <Popover>
+      <Popover open={notifOpen} onOpenChange={(v) => { setNotifOpen(v); if (v) markAllRead() }}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-gray-100 transition-colors" aria-label="Notifications">
+          <Button variant="ghost" className="relative h-10 w-10 rounded-full hover:bg-gray-100 transition-colors overflow-visible" aria-label={unreadCount > 0 ? `You have ${unreadCount} unread notifications` : 'Notifications'}>
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
               <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 flex items-center justify-center text-white text-xs font-bold">
@@ -78,8 +89,10 @@ export function UserNav() {
               <ul className="divide-y">
                 {notifs.map(n => (
                   <li key={n.id} className={`p-3 text-sm ${n.read ? '' : 'bg-amber-50'}`}>
-                    <div className="font-medium truncate">{n.title}</div>
-                    <div className="text-muted-foreground break-words">{n.body}</div>
+                    <button onClick={() => handleNotifClick(n)} className="w-full text-left">
+                      <div className="font-medium truncate">{n.title}</div>
+                      <div className="text-muted-foreground break-words">{n.body}</div>
+                    </button>
                   </li>
                 ))}
               </ul>
