@@ -88,6 +88,9 @@ export default function AdminAppointmentsPage() {
         })
 
         const filtered = normalized.filter((r) => {
+          // Remove cancelled appointments so slots open for others
+          if (r.status === 'cancelled') return false
+
           const d = r.scheduledAt && r.scheduledAt.toDate ? r.scheduledAt.toDate() : (r.date ? parse(r.date, 'MMMM d, yyyy', new Date()) : null)
           if (!d) return true
           if (view === 'day') return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth() && d.getDate() === selectedDate.getDate()

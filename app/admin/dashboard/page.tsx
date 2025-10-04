@@ -23,6 +23,9 @@ export default function AdminDashboard() {
   const [weeklyData, setWeeklyData] = useState<{ day: string, revenue: number }[]>([])
   const [monthlyData, setMonthlyData] = useState<{ day: string, revenue: number }[]>([])
   const [feedbackOpen, setFeedbackOpen] = useState(true)
+  const [fbFromDate, setFbFromDate] = useState<Date | undefined>(undefined)
+  const [fbToDate, setFbToDate] = useState<Date | undefined>(undefined)
+  const [fbShowConfirm, setFbShowConfirm] = useState(false)
 
   // Feedback states
   interface Feedback {
@@ -317,7 +320,12 @@ const handleConfirmDelete = async () => {
         <Card>
   <CardHeader className="flex items-center justify-between">
     <CardTitle>Feedback Management</CardTitle>
-    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={() => setFbShowConfirm(true)}>Download Feedbacks</Button>
+        <div className="text-sm text-muted-foreground">
+          {fbFromDate && fbToDate ? `${fbFromDate.toLocaleDateString()} - ${fbToDate.toLocaleDateString()}` : 'No range selected'}
+        </div>
+      </div>
       <button
         onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
         className="text-sm px-3 py-1 border rounded-md"
@@ -330,8 +338,61 @@ const handleConfirmDelete = async () => {
       >
         {feedbackOpen ? "Hide" : "Show"}
       </button>
-    </div>
   </CardHeader>
+
+  {/* Export dialog: choose range and confirm/cancel */}
+  <Dialog open={fbShowConfirm} onOpenChange={setFbShowConfirm}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Export Feedbacks</DialogTitle>
+        <DialogDescription>
+          Select a date range to export feedbacks{fbFromDate && fbToDate ? ` from ${fbFromDate.toLocaleDateString()} to ${fbToDate.toLocaleDateString()}` : ''}.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-2">
+        <label className="text-xs">From</label>
+        <input
+          type="date"
+          className="border rounded px-2 py-1"
+          value={fbFromDate ? fbFromDate.toISOString().slice(0,10) : ''}
+          onChange={(e) => setFbFromDate(e.target.value ? new Date(e.target.value) : undefined)}
+        />
+        <label className="text-xs">To</label>
+        <input
+          type="date"
+          className="border rounded px-2 py-1"
+          value={fbToDate ? fbToDate.toISOString().slice(0,10) : ''}
+          onChange={(e) => setFbToDate(e.target.value ? new Date(e.target.value) : undefined)}
+        />
+      </div>
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="outline" onClick={() => setFbShowConfirm(false)}>Cancel</Button>
+        <Button onClick={async () => {
+          setFbShowConfirm(false)
+          try {
+            const params = new URLSearchParams()
+            if (fbFromDate) params.set('fromDate', fbFromDate.toISOString())
+            if (fbToDate) params.set('toDate', fbToDate.toISOString())
+            const href = `/api/export-feedbacks?${params.toString()}`
+            const res = await fetch(href)
+            if (!res.ok) throw new Error(`Export failed: ${res.status}`)
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `Feedbacks-${new Date().toISOString().slice(0,10)}.xlsx`
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+            URL.revokeObjectURL(url)
+          } catch (err) {
+            console.error('Export feedbacks failed', err)
+            toast({ title: 'Export failed', description: String(err), variant: 'destructive' })
+          }
+        }}>Confirm</Button>
+      </div>
+    </DialogContent>
+  </Dialog>
 
   {feedbackOpen && (
     <CardContent>

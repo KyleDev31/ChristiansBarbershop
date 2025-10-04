@@ -16,9 +16,10 @@ export async function POST(request: NextRequest) {
     const dateString = format(date, 'MMMM d, yyyy')
 
     const appointmentsRef = collection(db, 'appointments')
-    // Firestore composite indexes may be required for queries that combine
-    // equality on 'barber' with range filters on 'scheduledAt'. To avoid
-    // requiring an index, query by date/range only and filter by barber in code.
+
+    // Avoid composite query combining equality on 'barber' with range on 'scheduledAt'
+    // because Firestore requires a composite index for that. Instead query by the
+    // date window and/or date string and filter by barber in code.
     const qts = query(appointmentsRef, where('scheduledAt', '>=', start), where('scheduledAt', '<=', end))
     const qstr = query(appointmentsRef, where('date', '==', dateString))
 
