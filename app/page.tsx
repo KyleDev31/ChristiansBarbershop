@@ -22,6 +22,12 @@ export async function getRecentFeedbacks(limitCount: number = 3): Promise<Feedba
       ...doc.data(),
     })) as Feedback[]
 
+    // Server-side diagnostic logging to help debug stale/missing data
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[getRecentFeedbacks] fetched feedback ids:', items.map(i => ({ id: i.id, name: i.name })))
+    } catch (e) {}
+
     // Sort by date desc on client and enforce limit
     return items
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -31,6 +37,9 @@ export async function getRecentFeedbacks(limitCount: number = 3): Promise<Feedba
     return []
   }
 }
+
+// Ensure this page is dynamically rendered so Firestore changes show immediately
+export const dynamic = 'force-dynamic'
 
 export interface Feedback {
   id: string
