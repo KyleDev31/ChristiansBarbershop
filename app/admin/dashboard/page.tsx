@@ -374,17 +374,8 @@ const handleConfirmDelete = async () => {
             if (fbFromDate) params.set('fromDate', fbFromDate.toISOString())
             if (fbToDate) params.set('toDate', fbToDate.toISOString())
             const href = `/api/export-feedbacks?${params.toString()}`
-            const res = await fetch(href)
-            if (!res.ok) throw new Error(`Export failed: ${res.status}`)
-            const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `Feedbacks-${new Date().toISOString().slice(0,10)}.xlsx`
-            document.body.appendChild(a)
-            a.click()
-            a.remove()
-            URL.revokeObjectURL(url)
+            // Use a full navigation so Android WebView / Median can handle the Content-Disposition download
+            window.location.href = href
           } catch (err) {
             console.error('Export feedbacks failed', err)
             toast({ title: 'Export failed', description: String(err), variant: 'destructive' })

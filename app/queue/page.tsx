@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { collection, query, where, onSnapshot, orderBy, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { format, addMinutes, isAfter } from "date-fns";
+import { format, addMinutes, isAfter, parse } from "date-fns";
 
 // --- Enhanced listenToQueue with validations and user name lookup ---
 const listenToQueue = (setQueue: (queue: any[]) => void) => {
@@ -41,8 +41,27 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
       // Skip non-waiting appointments
       if (data.status !== "waiting") continue;
 
-      // Get appointment time (prefer timestamp field)
-      const appointmentTime = data.timestamp?.toDate?.() || (typeof data.time === 'string' ? new Date(`${data.date} ${data.time}`) : new Date(data.date));
+      // Get appointment time (prefer timestamp field). Parse time strings robustly.
+      let appointmentTime: Date | null = null
+      if (data.timestamp && typeof data.timestamp.toDate === 'function') {
+        appointmentTime = data.timestamp.toDate()
+      } else if (data.date && data.time && typeof data.time === 'string') {
+        // Attempt to parse formats like "MMMM d, yyyy h:mm a" (e.g., "October 5, 2025 8:00 AM")
+        try {
+          appointmentTime = parse(`${data.date} ${data.time}`, 'MMMM d, yyyy h:mm a', new Date())
+          if (isNaN(appointmentTime.getTime())) {
+            // Try 24-hour format
+            appointmentTime = parse(`${data.date} ${data.time}`, 'MMMM d, yyyy HH:mm', new Date())
+          }
+        } catch (e) {
+          // Fallback to naive Date constructor
+          appointmentTime = new Date(`${data.date} ${data.time}`)
+        }
+      } else if (data.date) {
+        appointmentTime = new Date(data.date)
+      } else {
+        appointmentTime = null
+      }
       if (!(appointmentTime instanceof Date) || isNaN(appointmentTime.getTime())) continue;
 
       // Check if appointment is past its duration (30 minutes)
@@ -127,8 +146,8 @@ const listenToQueue = (setQueue: (queue: any[]) => void) => {
       }));
     }
 
-    // Sort queue by appointment time
-    queue = queue.sort((a, b) => a.appointmentTime.getTime() - b.appointmentTime.getTime());
+  // Sort queue by appointment time (earliest first)
+  queue = queue.sort((a, b) => a.appointmentTime.getTime() - b.appointmentTime.getTime());
 
     setQueue(queue);
   });
@@ -315,6 +334,15 @@ export default function QueuePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userAppointment, setUserAppointment] = useState<any | null>(null);
 
+  // Compute displayQueue: ensure user's appointment appears first (if present), rest remain sorted by time
+  const displayQueue = (() => {
+    if (!userAppointment) return queue.slice();
+    // Keep chronological order
+    const others = queue.filter(q => q.id !== userAppointment.id).slice();
+    // Place user's appointment at top
+    return [userAppointment, ...others];
+  })();
+
   useEffect(() => {
     setProgress((queue.length / 9) * 100);
   }, [queue]);
@@ -376,11 +404,11 @@ export default function QueuePage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <QueueSummary queue={queue} progress={progress} />
-          <AppointmentCard appointment={userAppointment} />
+    <QueueSummary queue={displayQueue} progress={progress} />
+    <AppointmentCard appointment={userAppointment} />
         </div>
 
-        <QueueTabs queue={queue} />
+  <QueueTabs queue={displayQueue} />
       </div>
     </div>
   );
