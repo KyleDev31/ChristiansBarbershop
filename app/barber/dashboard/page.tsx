@@ -668,22 +668,22 @@ export default function BarberDashboard() {
           <div className="col-span-2 space-y-6">
             {/* Earnings / Salary Card */}
             <div className="bg-white rounded-lg border p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3">
                 <div>
                   <h2 className="text-xl font-semibold">Earnings</h2>
                   <p className="text-sm text-muted-foreground">Your service earnings and share</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3 sm:mt-0 w-full sm:w-auto">
                   <button
-                    className={`px-3 py-1 rounded ${earnRange === 'today' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    className={`text-sm px-3 py-1 rounded w-full sm:w-auto ${earnRange === 'today' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800'}`}
                     onClick={() => setEarnRange('today')}
                   >Today</button>
                   <button
-                    className={`px-3 py-1 rounded ${earnRange === 'week' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    className={`text-sm px-3 py-1 rounded w-full sm:w-auto ${earnRange === 'week' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800'}`}
                     onClick={() => setEarnRange('week')}
                   >Week</button>
                   <button
-                    className={`px-3 py-1 rounded ${earnRange === 'month' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    className={`text-sm px-3 py-1 rounded w-full sm:w-auto ${earnRange === 'month' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800'}`}
                     onClick={() => setEarnRange('month')}
                   >Month</button>
                 </div>
