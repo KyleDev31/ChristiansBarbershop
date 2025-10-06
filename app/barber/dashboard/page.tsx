@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback } from "react"
-import { format as formatDate } from "date-fns"
+import { format as formatDate, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth } from "date-fns"
 import {
   collection,
   query,
@@ -12,6 +12,7 @@ import {
   updateDoc,
   setDoc,
   getDoc,
+  getDocs,
   writeBatch,
   Timestamp,
 } from "firebase/firestore"
@@ -63,6 +64,9 @@ export default function BarberDashboard() {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'complete' | 'cancel' | null>(null)
   const [confirmAppointmentId, setConfirmAppointmentId] = useState<string | null>(null)
+  // Earnings / salary card state
+  const [earnRange, setEarnRange] = useState<'today' | 'week' | 'month'>('today')
+  const [earnings, setEarnings] = useState({ totalService: 0, barberShare: 0, shopShare: 0, clients: 0 })
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -289,6 +293,76 @@ export default function BarberDashboard() {
       unsubDebug()
     }
   }, [user, profile]) // include profile so filtering waits for loaded profile
+
+  // Compute barber earnings for selected range (today / week / month)
+  useEffect(() => {
+    if (!user) return
+
+    let barberName = profile.fullName || user.displayName || user.email?.split('@')[0] || ''
+    const emailToBarberName: { [key: string]: string } = {
+      'noel@gmail.com': 'Noel',
+      'abel@gmail.com': 'Abel',
+      'jayboy@gmail.com': 'JayBoy'
+    }
+    if (user?.email && emailToBarberName[user.email]) barberName = emailToBarberName[user.email]
+
+    const fromTo = (() => {
+      const now = new Date()
+      if (earnRange === 'today') return { from: startOfDay(now), to: endOfDay(now) }
+      if (earnRange === 'week') return { from: subDays(startOfDay(now), 7), to: endOfDay(now) }
+      if (earnRange === 'month') return { from: startOfMonth(now), to: endOfMonth(now) }
+      return { from: startOfDay(now), to: endOfDay(now) }
+    })()
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const salesRef = collection(db, 'sales')
+        const snap = await getDocs(salesRef)
+        let totalService = 0
+        let clientsSet = new Set<string>()
+        snap.forEach(d => {
+          if (cancelled) return
+          const s: any = d.data()
+          let saleDate: any = s.date
+          if (typeof saleDate === 'string') saleDate = new Date(saleDate)
+          else if (saleDate && typeof saleDate.toDate === 'function') saleDate = saleDate.toDate()
+          if (!saleDate) return
+          if (saleDate < fromTo.from || saleDate > fromTo.to) return
+
+          const barber = (s.barber || s.barberName || 'Unknown').toString()
+          if (barber !== barberName) return
+
+          if (Array.isArray(s.items)) {
+            let hasService = false
+            let serviceSum = 0
+            s.items.forEach((it: any) => {
+              if (it.type === 'services' || it.type === 'service') {
+                const price = typeof it.price === 'number' ? it.price : parseFloat(it.price)
+                const qty = typeof it.quantity === 'number' ? it.quantity : parseInt(it.quantity) || 1
+                serviceSum += (isNaN(price) ? 0 : price) * (isNaN(qty) ? 1 : qty)
+                hasService = true
+              }
+            })
+            if (hasService) {
+              totalService += serviceSum
+              clientsSet.add(d.id)
+            }
+          }
+        })
+
+        const barberShare = totalService * 0.5
+        const shopShare = totalService - barberShare
+        setEarnings({ totalService, barberShare, shopShare, clients: clientsSet.size })
+      } catch (err) {
+        console.error('Failed to compute earnings', err)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, profile, earnRange])
 
   const saveProfile = useCallback(async () => {
     if (!user) return
@@ -590,8 +664,46 @@ export default function BarberDashboard() {
             {/* Availability section removed */}
           </div>
 
-          {/* Right - Appointments & Queue */}
+          {/* Right - Earnings, Appointments & Queue */}
           <div className="col-span-2 space-y-6">
+            {/* Earnings / Salary Card */}
+            <div className="bg-white rounded-lg border p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-xl font-semibold">Earnings</h2>
+                  <p className="text-sm text-muted-foreground">Your service earnings and share</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className={`px-3 py-1 rounded ${earnRange === 'today' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    onClick={() => setEarnRange('today')}
+                  >Today</button>
+                  <button
+                    className={`px-3 py-1 rounded ${earnRange === 'week' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    onClick={() => setEarnRange('week')}
+                  >Week</button>
+                  <button
+                    className={`px-3 py-1 rounded ${earnRange === 'month' ? 'bg-primary text-white' : 'bg-gray-100'}`}
+                    onClick={() => setEarnRange('month')}
+                  >Month</button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-3 bg-gray-50 rounded">
+                  <div className="text-sm text-muted-foreground">Service Total</div>
+                  <div className="text-lg font-bold">₱{earnings.totalService.toFixed(2)}</div>
+                </div>
+                <div className="p-3 bg-gray-50 rounded">
+                  <div className="text-sm text-muted-foreground">Your Share</div>
+                  <div className="text-lg font-bold">₱{earnings.barberShare.toFixed(2)}</div>
+                </div>
+                <div className="p-3 bg-gray-50 rounded">
+                  <div className="text-sm text-muted-foreground">Clients</div>
+                  <div className="text-lg font-bold">{earnings.clients}</div>
+                </div>
+              </div>
+            </div>
             <div className="bg-white rounded-lg border p-6 shadow-sm">
               <h2 className="text-xl font-semibold mb-2">My Appointments</h2>
               <p className="text-sm text-muted-foreground mb-4">Upcoming and past appointments are shown here.</p>
