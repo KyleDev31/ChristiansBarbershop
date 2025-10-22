@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet } from "lucide-react"
+import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet, CalendarIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+import { format } from "date-fns"
 import { saveAs } from 'file-saver'
 import { db } from "@/lib/firebase"
 import { addDoc, collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "firebase/firestore"
@@ -30,8 +34,8 @@ interface Service {
   duration: number;
   category: string;
   image: string;
+  type: 'services';
 }
-
 interface Product {
   id: number;
   name: string;
@@ -39,6 +43,7 @@ interface Product {
   category: string;
   stock: number;
   image: string;
+  type: 'products';
 }
 
 type Item = Service | Product;
@@ -74,6 +79,7 @@ export default function POSPage() {
           duration: s.duration || 0,
           category: s.category || "",
           image: s.image || "/placeholder.svg?height=100&width=100",
+          type: 'services' as const,
         }
       })
       setLocalServices(data)
@@ -82,7 +88,7 @@ export default function POSPage() {
   }, [])
 
   // Mock data for products
-  const products = [
+  const products: Product[] = [
     {
       id: 101,
       name: "Hair Wax",
@@ -90,6 +96,7 @@ export default function POSPage() {
       category: "styling",
       stock: 15,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
     {
       id: 102,
@@ -98,6 +105,7 @@ export default function POSPage() {
       category: "beard",
       stock: 8,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
     {
       id: 103,
@@ -106,6 +114,7 @@ export default function POSPage() {
       category: "hair",
       stock: 3,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
     {
       id: 104,
@@ -114,6 +123,7 @@ export default function POSPage() {
       category: "styling",
       stock: 12,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
     {
       id: 105,
@@ -122,6 +132,7 @@ export default function POSPage() {
       category: "tools",
       stock: 2,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
     {
       id: 106,
@@ -130,6 +141,7 @@ export default function POSPage() {
       category: "beard",
       stock: 7,
       image: "/placeholder.svg?height=100&width=100",
+      type: 'products' as const,
     },
   ]
 
@@ -192,6 +204,13 @@ export default function POSPage() {
   const [cashAmount, setCashAmount] = useState("")
   const [cashError, setCashError] = useState("")
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [transactionDate, setTransactionDate] = useState<Date>(new Date())
+  const [transactionTime, setTransactionTime] = useState<string>(() => {
+    const now = new Date()
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  })
+  const [transactionDateTime, setTransactionDateTime] = useState<string>(() => new Date().toISOString().slice(0,16)) // datetime-local value
+  const [dateError, setDateError] = useState<string>("")
   const [selectedBarber, setSelectedBarber] = useState("")
   const [barberError, setBarberError] = useState("")
   const [finishedOpen, setFinishedOpen] = useState(false)
@@ -220,7 +239,7 @@ export default function POSPage() {
   }
 
   // Filter items based on search query and active tab
-  const filteredItems =
+  const filteredItems: (Service | Product)[] =
     activeTab === "services"
       ? localServices.filter(
           (service) =>
@@ -378,7 +397,7 @@ export default function POSPage() {
   }
 
   // Add item to cart
-  const addToCart = (item: { id: number; name: string; price: number; type?: string; image?: string }) => {
+  const addToCart = (item: Service | Product) => {
     const existingItem = cart.find((cartItem) => cartItem.id === item.id && cartItem.type === activeTab)
 
     if (existingItem) {
@@ -393,7 +412,7 @@ export default function POSPage() {
       setCart([...cart, { ...item, quantity: 1, type: activeTab, isSpecialRequest: false }])
     }
   }
-  const confirmAddToCart = (item: { id: number; name: string; price: number; type?: string; image?: string }) => {
+  const confirmAddToCart = (item: Service | Product) => {
     openConfirm(
       "Add to cart",
       `Add "${item.name}" to the cart?`,
@@ -428,6 +447,24 @@ export default function POSPage() {
     setIsProcessingPayment(true)
 
     try {
+     // validate selected transaction datetime
+     // Combine date and time into a single Date object
+     const [hours, minutes] = transactionTime.split(':').map(Number)
+     const chosenDate = new Date(transactionDate)
+     chosenDate.setHours(hours, minutes, 0, 0)
+     
+     if (isNaN(chosenDate.getTime())) {
+       setDateError("Please select a valid date/time.")
+       setIsProcessingPayment(false)
+       return
+     }
+     const now = new Date()
+     if (chosenDate.getTime() > now.getTime()) {
+       setDateError("Transaction date cannot be in the future.")
+       setIsProcessingPayment(false)
+       return
+     }
+     setDateError("")
       // Check if cart contains only products (no services)
       const hasServices = cart.some(item => item.type === "services")
       
@@ -454,7 +491,7 @@ export default function POSPage() {
       const toTitle = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
       const receipt = {
         id: `REC-${Date.now().toString().slice(-6)}`,
-        date: new Date(),
+        date: chosenDate,
         customer: customer,
         items: cart,
         subtotal: subtotal,
@@ -532,594 +569,351 @@ export default function POSPage() {
     const newItem = {
       id: Date.now(),
       name: `Special Request: ${specialRequest}`,
-      price: Number(specialRequestPrice) || 0,
+      price: parseFloat(specialRequestPrice) || 0,
       quantity: 1,
-      type: "special",
-      isSpecialRequest: true
+      type: "services",
+      isSpecialRequest: true,
     }
 
     setCart([...cart, newItem])
     setSpecialRequest("")
     setSpecialRequestPrice("")
-    setIsSpecialRequestDialogOpen(false)
   }
 
-  // Add or edit service
-  const handleServiceSubmit = () => {
-    if (!editingService?.name || !editingService?.price) return
-
-    if (editingService.id) {
-      // Edit existing service
-      setLocalServices(localServices.map(service => 
-        service.id === editingService.id ? { ...service, ...editingService } as Service : service
-      ))
-    } else {
-      // Add new service
-      const newService: Service = {
-        id: Date.now(),
-        name: editingService.name,
-        price: editingService.price,
-        duration: editingService.duration || 30, // Default duration
-        category: editingService.category || "haircut",
-        image: editingService.image || "/placeholder.svg?height=100&width=100",
-      }
-      setLocalServices([...localServices, newService])
-    }
-
-    setEditingService(null)
-    setIsServiceDialogOpen(false)
-  }
-
-  // Delete service
-  const deleteService = (id: number) => {
-    setLocalServices(localServices.filter(service => service.id !== id))
-  }
-
-  // Open service dialog for editing
-  const editService = (service: Service) => {
-    setEditingService(service)
-    setIsServiceDialogOpen(true)
-  }
-
-  // Open service dialog for new service
-  const addNewService = () => {
-    setEditingService({
-      name: "",
-      price: 0,
-      duration: 30,
-      category: "haircut",
-      image: "/placeholder.svg?height=100&width=100",
-    })
-    setIsServiceDialogOpen(true)
-  }
-
-  // Update the card click handler to check type
-  const handleCardClick = (item: Item) => {
-    if ('duration' in item) {
-      // It's a service
-      confirmAddToCart(item)
-    } else {
-      // It's a product
-      confirmAddToCart(item)
-    }
-  }
-
-  // Export Sales Report
-  const exportSalesReport = () => {
-    try {
-      if (transactions.length === 0) {
-        alert('No transactions to export')
-        return
-      }
-
-      const salesData: SalesReportRow[] = transactions.map(transaction => ({
-        'Transaction ID': transaction.id,
-        'Date': new Date(transaction.date).toLocaleString(),
-        'Customer': transaction.customer?.name || 'Walk-in',
-        'Items': transaction.items.map(item => `${item.name} (${item.quantity})`).join(', '),
-        'Subtotal': `₱${transaction.subtotal.toFixed(2)}`,
-        'Total': `₱${transaction.total.toFixed(2)}`,
-        'Payment Method': transaction.paymentMethod,
-      }))
-
-      // Convert data to CSV
-      const headers = Object.keys(salesData[0]) as (keyof SalesReportRow)[]
-      const csvRows = [
-        headers.join(','),
-        ...salesData.map(row => 
-          headers.map(header => {
-            const value = row[header]
-            return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
-          }).join(',')
-        )
-      ]
-      const csvContent = csvRows.join('\n')
-
-      // Create and save file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
-      saveAs(blob, `sales_report_${new Date().toISOString().split('T')[0]}.csv`)
-    } catch (error) {
-      console.error('Error exporting sales report:', error)
-      alert('Failed to export sales report. Please try again.')
-    }
-  }
-
-  // Export Service Performance Report
-  const exportServiceReport = () => {
-    try {
-      if (transactions.length === 0) {
-        alert('No transactions to export')
-        return
-      }
-
-      // Calculate service statistics
-      const serviceStats = new Map<string, { count: number; revenue: number }>()
-      
-      transactions.forEach(transaction => {
-        transaction.items.forEach(item => {
-          if (item.type === 'services') {
-            const current = serviceStats.get(item.name) || { count: 0, revenue: 0 }
-            serviceStats.set(item.name, {
-              count: current.count + item.quantity,
-              revenue: current.revenue + (item.price * item.quantity)
-            })
-          }
-        })
-      })
-
-      if (serviceStats.size === 0) {
-        alert('No service data to export')
-        return
-      }
-
-      const serviceData: ServiceReportRow[] = Array.from(serviceStats.entries()).map(([name, stats]) => ({
-        'Service Name': name,
-        'Times Booked': stats.count,
-        'Total Revenue': `₱${stats.revenue.toFixed(2)}`,
-        'Average Revenue per Booking': `₱${(stats.revenue / stats.count).toFixed(2)}`
-      }))
-
-      // Convert data to CSV
-      const headers = Object.keys(serviceData[0]) as (keyof ServiceReportRow)[]
-      const csvRows = [
-        headers.join(','),
-        ...serviceData.map(row => 
-          headers.map(header => {
-            const value = row[header]
-            return typeof value === 'string' ? `"${value.replace(/"/g, '""')}"` : value
-          }).join(',')
-        )
-      ]
-      const csvContent = csvRows.join('\n')
-
-      // Create and save file
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' })
-      saveAs(blob, `service_performance_${new Date().toISOString().split('T')[0]}.csv`)
-    } catch (error) {
-      console.error('Error exporting service report:', error)
-      alert('Failed to export service report. Please try again.')
-    }
-  }
-
-  const saveSaleToFirestore = async (saleData: any) => {
+  // Save sale transaction to Firestore
+  const saveSaleToFirestore = async (saleData: {
+    transactionId: string;
+    date: Date;
+    customer: { id: number; name: string; phone: string; email: string } | null;
+    items: { id: number; name: string; price: number; quantity: number; type: string; image?: string }[];
+    subtotal: number;
+    total: number;
+    paymentMethod: string;
+    barber: string;
+    barberName: string;
+  }) => {
     try {
       await addDoc(collection(db, "sales"), saleData)
     } catch (error) {
       console.error("Error saving sale to Firestore:", error)
+      throw error
     }
   }
 
-  useEffect(() => {
-    setLoading(true)
-    const timer = setTimeout(() => setLoading(false), 1000)
-    return () => clearTimeout(timer)
-  }, [])
+  const handleServiceSubmit = async () => {
+    if (!editingService) return
 
-  // Clear barber selection when cart becomes products-only
-  useEffect(() => {
-    const hasServices = cart.some(item => item.type === "services")
-    if (!hasServices && selectedBarber) {
-      setSelectedBarber("")
-      setBarberError("")
+    try {
+      if (editingService.id) {
+        // Update existing service
+        const serviceRef = doc(db, "services", editingService.id.toString())
+        await updateDoc(serviceRef, {
+          name: editingService.name,
+          price: editingService.price,
+          category: editingService.category,
+          // image: editingService.image, // handle image upload separately
+        })
+        toast({ title: "Service updated", description: "The service has been updated successfully." })
+      } else {
+        // Add new service
+        const newService = {
+          name: editingService.name,
+          price: editingService.price,
+          category: editingService.category,
+          image: "", // default or placeholder image
+        }
+        await addDoc(collection(db, "services"), newService)
+        toast({ title: "Service added", description: "The new service has been added successfully." })
+      }
+      setIsServiceDialogOpen(false)
+      setEditingService(null)
+      // Reload services
+      const snap = await getDocs(collection(db, "services"))
+      const data: Service[] = snap.docs.map((d, idx) => {
+        const s: any = d.data()
+        return {
+          id: idx + 1,
+          name: s.name || "Service",
+          price: typeof s.price === "number" ? s.price : parseFloat(s.price) || 0,
+          duration: s.duration || 0,
+          category: s.category || "",
+          image: s.image || "/placeholder.svg?height=100&width=100",
+          type: 'services' as const,
+        }
+      })
+      setLocalServices(data)
+    } catch (error) {
+      console.error("Error saving service:", error)
+      toast({ title: "Error", description: "There was an error saving the service.", variant: "destructive" })
     }
-  }, [cart, selectedBarber])
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-12 w-12 animate-spin text-primary mb-6" />
-        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Products/Services Skeleton */}
-          <div className="lg:col-span-2">
-            <Skeleton className="h-12 w-1/2 mb-4" />
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => (
-                <Skeleton key={i} className="h-40 w-full" />
-              ))}
-            </div>
-          </div>
-          {/* Cart Skeleton */}
-          <div className="lg:col-span-1 flex flex-col h-full">
-            <Skeleton className="h-12 w-1/2 mb-4" />
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-            <Skeleton className="h-24 w-full mt-4" />
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
-    <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 max-w-[1920px] text-sm">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold">Point of Sale</h1>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-          <Button className="bg-green-900 w-full sm:w-auto text-xs sm:text-sm" onClick={() => setFinishedOpen((v) => !v)}>
-            Finished Services
-            {finishedCount > 0 && (
-              <span className="ml-2 inline-flex items-center justify-center text-xs rounded-full bg-red-600 text-white px-2 py-0.5">
-                {finishedCount}
-              </span>
-            )}
-          </Button>
-          <Button variant="outline" onClick={confirmClearCart} className="w-full sm:w-auto text-xs sm:text-sm">
-            <Trash className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-            Clear Cart
-          </Button>
-        </div>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">Point of Sale</h1>
+
+      {/* Search and Tabs */}
+      <div className="flex items-center justify-between mb-4">
+        <Input
+          placeholder="Search services or products..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-sm"
+        />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 max-w-md">
+          <TabsList>
+            <TabsTrigger value="services">Services</TabsTrigger>
+            <TabsTrigger value="products">Products</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
-        {/* Products/Services Section */}
-        <div className="lg:col-span-8">
-          <Card className="h-full shadow-sm">
-            <CardHeader className="pb-3 sm:pb-4">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
-                <div>
-                  <CardTitle className="text-base sm:text-lg font-semibold">Products & Services</CardTitle>
-                  <CardDescription className="text-xs sm:text-sm text-gray-600">Add items to the current transaction</CardDescription>
-                </div>
-                <div className="relative w-full md:w-72">
-                  <Search className="absolute left-3 top-2.5 h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
-                  <Input
-                    placeholder="Search items..."
-                    className="pl-8 sm:pl-10 h-8 sm:h-10 border-gray-200 focus:border-primary text-xs sm:text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchQuery && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-6 w-6 sm:h-8 sm:w-8 hover:bg-gray-100"
-                      onClick={() => setSearchQuery("")}
-                    >
-                      <X className="h-3 w-3 sm:h-4 sm:w-4" />
-                      <span className="sr-only">Clear search</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
+      {/* Services and Products Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredItems.length === 0 && (
+          <div className="col-span-full text-center py-4 text-muted-foreground">
+            No items found.
+          </div>
+        )}
+        {filteredItems.map((item) => (
+          <Card key={item.id} className="hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">{item.name}</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">
+                {item.type === "services" ? "Service" : "Product"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              {finishedOpen && (
-                <div className="mb-4 sm:mb-6 border rounded-lg p-3 sm:p-4 bg-green-50 border-green-200">
-                  <div className="font-semibold mb-3 text-green-800 text-sm sm:text-base">Recently Finished Services</div>
-                  {finishedAppointments.length === 0 ? (
-                    <div className="text-xs sm:text-sm text-green-600">No finished services yet.</div>
-                  ) : (
-                    <div className="space-y-2 sm:space-y-3 max-h-64 overflow-auto pr-1">
-                      {finishedAppointments.map((a: any) => (
-                        <div key={a.id} className="flex flex-col border border-green-200 rounded-lg p-2 sm:p-3 bg-white shadow-sm">
-                          <div className="cursor-pointer flex-1 mb-2" onClick={() => loadFinishedToCart(a)} title="Load to current sale">
-                            <div className="font-medium text-gray-900 text-sm sm:text-base">{a.customerName || a.customer || a.email || "Customer"}</div>
-                            <div className="text-xs sm:text-sm text-gray-600">
-                              {a.serviceName || a.service || "Service"}
-                              {a.time ? ` • ${a.time}` : ""}
-                              {a.date ? ` • ${a.date}` : ""}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              {a.completedAt?.toDate?.() ? new Date(a.completedAt.toDate()).toLocaleString() : ""}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row gap-2 w-full">
-                            <Button 
-                              size="sm" 
-                              variant="secondary" 
-                              onClick={() => confirmLoadFinishedToCart(a)} 
-                              className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
-                            >
-                              Add to cart
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => confirmMarkRecorded(a.id)} 
-                              className="text-xs w-full sm:w-auto flex-1 sm:flex-none"
-                            >
-                              Mark recorded
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-              <Tabs defaultValue="services" value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="mb-4 sm:mb-6 bg-gray-100">
-                  <TabsTrigger value="services" className="data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs sm:text-sm">Services</TabsTrigger>
-                  <TabsTrigger value="products" className="data-[state=active]:bg-white data-[state=active]:shadow-sm text-xs sm:text-sm">Products</TabsTrigger>
-                </TabsList>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 justify-items-center">
-                  {filteredItems.map((item) => (
-                    <Card
-                      key={item.id}
-                      className="cursor-pointer hover:shadow-lg border border-gray-200 hover:border-primary transition-all duration-200 group rounded-lg p-0 w-full max-w-[180px] sm:max-w-[200px] h-[120px] sm:h-[140px] flex flex-col"
-                      onClick={() => handleCardClick(item)}
-                    >
-                      <CardContent className="flex flex-col justify-between items-center p-2 sm:p-4 h-full">
-                        <div className="flex-1 flex flex-col justify-center items-center text-center">
-                          <div className="font-semibold text-xs sm:text-sm text-center mb-1 sm:mb-2 w-full leading-tight line-clamp-2">{item.name}</div>
-                          <div className="flex justify-center items-center w-full">
-                            <span className="text-sm sm:text-lg font-bold text-primary">{formatCurrency(item.price)}</span>
-                          </div>
-                        </div>
-                        {'duration' in item && (
-                          <div className="flex justify-center gap-1 mt-1 sm:mt-2">
-                            <Button
-                              variant="secondary"
-                              size="icon"
-                              className="h-6 w-6 sm:h-7 sm:w-7"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                editService(item as Service)
-                              }}
-                            >
-                              <Edit className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              className="h-6 w-6 sm:h-7 sm:w-7"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteService(item.id)
-                              }}
-                            >
-                              <Trash className="h-2 w-2 sm:h-3 sm:w-3" />
-                            </Button>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Cart Section */}
-        <div className="lg:col-span-4">
-          <Card className="h-full flex flex-col sticky top-4 sm:top-6 shadow-sm">
-            <CardHeader className="pb-3 sm:pb-4">
-              <div className="flex justify-between items-center">
+              <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-base sm:text-lg font-semibold">Current Sale</CardTitle>
-                  <CardDescription className="text-xs sm:text-sm text-gray-600">
-                    {cart.length} {cart.length === 1 ? "item" : "items"} in cart
-                  </CardDescription>
+                  <div className="text-xl font-bold">{formatCurrency(item.price)}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {item.type === "services" ? `${'duration' in item ? item.duration : 0} mins` : `Stock: ${'stock' in item ? item.stock : 0}`}
+                  </div>
                 </div>
-                <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
+                <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-md" />
               </div>
-            </CardHeader>
-            <CardContent className="flex-grow overflow-auto px-3 sm:px-4">
-              {cart.length > 0 ? (
-                <div className="space-y-2 sm:space-y-3">
-                  {cart.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between border border-gray-200 rounded-lg p-2 sm:p-3 bg-gray-50">
-                      <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-md overflow-hidden flex-shrink-0 bg-gray-200 flex items-center justify-center">
-                          <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium text-xs sm:text-sm truncate">{item.name}</div>
-                          <div className="text-xs text-gray-600">
-                            {formatCurrency(item.price)} × {item.quantity}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                        <div className="flex items-center border border-gray-300 rounded-md bg-white">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 sm:h-7 sm:w-7 rounded-none hover:bg-gray-100"
-                            onClick={() => updateQuantity(index, item.quantity - 1)}
-                          >
-                            <Minus className="h-2 w-2 sm:h-3 sm:w-3" />
-                          </Button>
-                          <span className="w-6 sm:w-8 text-center text-xs sm:text-sm font-medium">{item.quantity}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 sm:h-7 sm:w-7 rounded-none hover:bg-gray-100"
-                            onClick={() => updateQuantity(index, item.quantity + 1)}
-                          >
-                            <Plus className="h-2 w-2 sm:h-3 sm:w-3" />
-                          </Button>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 sm:h-7 sm:w-7 text-red-500 hover:bg-red-50"
-                          onClick={() => removeFromCart(index)}
-                        >
-                          <Trash className="h-2 w-2 sm:h-3 sm:w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full py-12">
-                  <ShoppingCart className="h-16 w-16 text-gray-300 mb-4" />
-                  <p className="text-gray-500 text-center text-sm">
-                    Your cart is empty.<br />
-                    Add products or services to begin.
-                  </p>
-                </div>
-              )}
             </CardContent>
-            <CardFooter className="flex-shrink-0 border-t border-gray-200 pt-3 sm:pt-4 px-3 sm:px-4">
-              <div className="w-full space-y-3 sm:space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs sm:text-sm">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span className="font-medium">{formatCurrency(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-base sm:text-lg border-t border-gray-200 pt-2">
-                    <span>Total</span>
-                    <span className="text-primary">{formatCurrency(total)}</span>
-                  </div>
-                </div>
-                <Button 
-                  disabled={cart.length === 0} 
-                  onClick={() => setIsPaymentDialogOpen(true)}
-                  className="w-full h-9 sm:h-11 bg-primary hover:bg-primary/90 text-white font-medium text-xs sm:text-sm"
-                >
-                  <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
-                  Process Payment
-                </Button>
-              </div>
+            <CardFooter>
+              <Button
+                onClick={() => confirmAddToCart(item)}
+                className="w-full"
+              >
+                Add to Cart
+              </Button>
             </CardFooter>
           </Card>
-        </div>
+        ))}
       </div>
 
-      {/* Customer Selection Dialog */}
+      {/* Cart Summary */}
+      <div className="mt-8 p-4 bg-muted rounded-md">
+        <h2 className="text-lg font-semibold mb-4">Cart Summary</h2>
+        {cart.length === 0 ? (
+          <div className="text-center text-muted-foreground py-4">
+            Your cart is empty.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {cart.map((item, index) => (
+              <div key={index} className="flex justify-between items-center">
+                <div>
+                  {item.name} × {item.quantity}
+                </div>
+                <div className="font-bold">{formatCurrency(item.price * item.quantity)}</div>
+              </div>
+            ))}
+            <Separator className="my-2" />
+            <div className="flex justify-between font-bold">
+              <span>Total</span>
+              <span>{formatCurrency(total)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="mt-4 flex gap-4">
+        <Button
+          onClick={() => setIsCustomerDialogOpen(true)}
+          className="flex-1"
+          variant={customer ? "default" : "outline"}
+        >
+          {customer ? `Customer: ${customer.name}` : "Select Customer"}
+        </Button>
+        <Button
+          onClick={() => setIsPaymentDialogOpen(true)}
+          className="flex-1"
+          disabled={cart.length === 0}
+        >
+          Proceed to Payment
+        </Button>
+      </div>
 
       {/* Payment Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={open => { 
-  setIsPaymentDialogOpen(open); 
-  if (!open) setCashAmount(""); 
-}}>
-  <DialogContent className="sm:max-w-[425px]">
-    <DialogHeader>
-      <DialogTitle>Payment</DialogTitle>
-      <DialogDescription>Complete the transaction.</DialogDescription>
-    </DialogHeader>
-    <div className="py-4">
-      <div className="space-y-4">
-        <div className="p-4 bg-muted rounded-md">
-          <div className="flex justify-between mb-2">
-            <span>Subtotal</span>
-            <span>{formatCurrency(subtotal)}</span>
-          </div>
-          <Separator className="my-2" />
-          <div className="flex justify-between font-bold">
-            <span>Total</span>
-            <span>{formatCurrency(total)}</span>
-          </div>
-        </div>
+        setIsPaymentDialogOpen(open); 
+        if (!open) {
+          setCashAmount("");
+          const now = new Date()
+          setTransactionDate(now);
+          setTransactionTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+          setTransactionDateTime(now.toISOString().slice(0,16));
+          setDateError("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Payment</DialogTitle>
+            <DialogDescription>Complete the transaction.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-md">
+                <div className="flex justify-between mb-2">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(subtotal)}</span>
+                </div>
+                <Separator className="my-2" />
+                <div className="flex justify-between font-bold">
+                  <span>Total</span>
+                  <span>{formatCurrency(total)}</span>
+                </div>
+              </div>
 
-        {/* Barber Selection - Only show if cart contains services */}
-        {cart.some(item => item.type === "services") && (
-          <div className="space-y-2">
-            <Label htmlFor="barber">Select Barber</Label>
-            <Select value={selectedBarber} onValueChange={(v) => { setSelectedBarber(v); setBarberError("") }}>
-              <SelectTrigger id="barber">
-                <SelectValue placeholder="Choose a barber" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="jayboy">Jayboy</SelectItem>
-                <SelectItem value="noel">Noel</SelectItem>
-                <SelectItem value="abel">Abel</SelectItem>
-              </SelectContent>
-            </Select>
-            {selectedBarber && (
-              <div className="text-sm text-muted-foreground">Auto-selected: {selectedBarber}</div>
-            )}
-            {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
-          </div>
-        )}
+             {/* Transaction date/time picker */}
+             <div className="space-y-2">
+               <Label>Transaction Date & Time</Label>
+               <div className="flex gap-2">
+                 <Popover>
+                   <PopoverTrigger asChild>
+                     <Button
+                       variant="outline"
+                       className={cn(
+                         "flex-1 justify-start text-left font-normal",
+                         !transactionDate && "text-muted-foreground"
+                       )}
+                     >
+                       <CalendarIcon className="mr-2 h-4 w-4" />
+                       {transactionDate ? format(transactionDate, "PPP") : <span>Pick a date</span>}
+                     </Button>
+                   </PopoverTrigger>
+                   <PopoverContent className="w-auto p-0" align="start">
+                     <Calendar
+                       mode="single"
+                       selected={transactionDate}
+                       onSelect={(date) => {
+                         if (date) {
+                           setTransactionDate(date)
+                           setDateError("")
+                         }
+                       }}
+                       disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
+                       initialFocus
+                     />
+                   </PopoverContent>
+                 </Popover>
+                 <Input
+                   type="time"
+                   value={transactionTime}
+                   onChange={(e) => {
+                     setTransactionTime(e.target.value)
+                     setDateError("")
+                   }}
+                   className="w-32"
+                 />
+               </div>
+               {dateError && <div className="text-red-600 text-sm">{dateError}</div>}
+             </div>
 
-        {/* Payment Method */}
-        <div className="space-y-2">
-          <Label htmlFor="payment-method">Payment Method</Label>
-          <Select defaultValue="cash" onValueChange={setPaymentMethod}>
-            <SelectTrigger id="payment-method">
-              <SelectValue placeholder="Select payment method" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="gcash">GCash</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+              {/* Barber Selection - Only show if cart contains services */}
+              {cart.some(item => item.type === "services") && (
+                <div className="space-y-2">
+                  <Label htmlFor="barber-select">Select Barber</Label>
+                  <Select
+                    value={selectedBarber}
+                    onValueChange={setSelectedBarber}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a barber" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Abel">Abel</SelectItem>
+                      <SelectItem value="JayBoy">Jayboy</SelectItem>
+                      <SelectItem value="Noel">Noel</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
+                </div>
+              )}
 
-        {paymentMethod === "cash" && (
-          <div className="space-y-2">
-            <Label htmlFor="cash-amount">Cash Amount</Label>
-            <Input
-              id="cash-amount"
-              type="number"
-              placeholder="Enter amount received"
-              value={cashAmount}
-              onChange={e => {
-                const val = e.target.value
-                setCashAmount(val)
-                const cash = parseFloat(val)
-                if (val === "") {
-                  setCashError("")
-                } else if (isNaN(cash) || cash <= 0) {
-                  setCashError("Enter a valid positive amount.")
-                } else if (cash < total) {
-                  setCashError("Cash amount must be at least the total.")
-                } else {
-                  setCashError("")
-                }
-              }}
-            />
-            {cashError && <div className="text-red-600 text-sm">{cashError}</div>}
+              {/* Payment Method */}
+              <div className="space-y-2">
+                <Label htmlFor="payment-method">Payment Method</Label>
+                <Select defaultValue="cash" onValueChange={setPaymentMethod}>
+                  <SelectTrigger id="payment-method">
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="gcash">GCash</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {paymentMethod === "cash" && (
+                <div className="space-y-2">
+                  <Label htmlFor="cash-amount">Cash Amount</Label>
+                  <Input
+                    id="cash-amount"
+                    type="number"
+                    placeholder="Enter amount received"
+                    value={cashAmount}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCashAmount(val)
+                      const cash = parseFloat(val)
+                      if (val === "") {
+                        setCashError("")
+                      } else if (isNaN(cash) || cash <= 0) {
+                        setCashError("Enter a valid positive amount.")
+                      } else if (cash < total) {
+                        setCashError("Cash amount must be at least the total.")
+                      } else {
+                        setCashError("")
+                      }
+                    }}
+                  />
+                  {cashError && <div className="text-red-600 text-sm">{cashError}</div>}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-    </div>
-    <DialogFooter>
-      <Button 
-        variant="outline" 
-        onClick={() => setIsPaymentDialogOpen(false)}
-        disabled={isProcessingPayment}
-      >
-        Cancel
-      </Button>
-      <Button 
-        onClick={handlePayment}
-        disabled={isProcessingPayment}
-        className={isProcessingPayment ? "opacity-50 cursor-not-allowed" : ""}
-      >
-        {isProcessingPayment ? (
-          <>
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-            Processing...
-          </>
-        ) : (
-          "Complete Payment"
-        )}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsPaymentDialogOpen(false)}
+              disabled={isProcessingPayment}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handlePayment}
+              disabled={isProcessingPayment}
+              className={isProcessingPayment ? "opacity-50 cursor-not-allowed" : ""}
+            >
+              {isProcessingPayment ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                "Complete Payment"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
 
       {/* Receipt Dialog */}
@@ -1325,3 +1119,4 @@ export default function POSPage() {
     </div>
   )
 }
+

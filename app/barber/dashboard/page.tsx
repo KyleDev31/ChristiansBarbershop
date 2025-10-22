@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState, useCallback } from "react"
-import { format as formatDate, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth } from "date-fns"
+import { format as formatDate, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, parseISO, isAfter, isBefore, isEqual } from "date-fns"
 import {
   collection,
   query,
@@ -295,6 +295,7 @@ export default function BarberDashboard() {
   }, [user, profile]) // include profile so filtering waits for loaded profile
 
   // Compute barber earnings for selected range (today / week / month)
+  // This matches the logic used in the reports page
   useEffect(() => {
     if (!user) return
 
@@ -319,31 +320,52 @@ export default function BarberDashboard() {
       try {
         const salesRef = collection(db, 'sales')
         const snap = await getDocs(salesRef)
+        console.log('=== EARNINGS CALCULATION DEBUG ===')
+        console.log('Total sales documents:', snap.docs.length)
+        console.log('Looking for barber:', barberName)
+        console.log('Date range:', fromTo.from, 'to', fromTo.to)
+        
         let totalService = 0
         let clientsSet = new Set<string>()
+        
         snap.forEach(d => {
           if (cancelled) return
           const s: any = d.data()
+          
+          // Parse sale date - handle both string and Timestamp formats
           let saleDate: any = s.date
-          if (typeof saleDate === 'string') saleDate = new Date(saleDate)
+          if (typeof saleDate === 'string') saleDate = parseISO(saleDate)
           else if (saleDate && typeof saleDate.toDate === 'function') saleDate = saleDate.toDate()
+          
           if (!saleDate) return
-          if (saleDate < fromTo.from || saleDate > fromTo.to) return
+          
+          // Use date-fns comparison functions for consistency with reports page
+          if (!(isEqual(saleDate, fromTo.from) || isEqual(saleDate, fromTo.to) || 
+                (isAfter(saleDate, fromTo.from) && isBefore(saleDate, fromTo.to)))) {
+            return
+          }
 
+          // Match barber name - case-insensitive comparison
           const barber = (s.barber || s.barberName || 'Unknown').toString()
-          if (barber !== barberName) return
+          console.log('Earnings check - Sale barber:', barber, 'Looking for:', barberName, 'Match:', barber.toLowerCase() === barberName.toLowerCase())
+          if (barber.toLowerCase() !== barberName.toLowerCase()) return
 
+          // Calculate service revenue only (exclude products)
           if (Array.isArray(s.items)) {
             let hasService = false
             let serviceSum = 0
+            
             s.items.forEach((it: any) => {
               if (it.type === 'services' || it.type === 'service') {
                 const price = typeof it.price === 'number' ? it.price : parseFloat(it.price)
-                const qty = typeof it.quantity === 'number' ? it.quantity : parseInt(it.quantity) || 1
-                serviceSum += (isNaN(price) ? 0 : price) * (isNaN(qty) ? 1 : qty)
+                const qty = typeof it.quantity === 'number' ? it.quantity : parseInt(it.quantity)
+                const units = isNaN(qty) ? 1 : qty
+                serviceSum += (isNaN(price) ? 0 : price) * units
                 hasService = true
               }
             })
+            
+            // Only count sales with services
             if (hasService) {
               totalService += serviceSum
               clientsSet.add(d.id)
@@ -351,8 +373,15 @@ export default function BarberDashboard() {
           }
         })
 
+        // Calculate 50/50 split: 50% for barber, 50% for shop
         const barberShare = totalService * 0.5
-        const shopShare = totalService - barberShare
+        const shopShare = totalService * 0.5
+        console.log('=== EARNINGS RESULTS ===')
+        console.log('Total Service Revenue:', totalService)
+        console.log('Barber Share (50%):', barberShare)
+        console.log('Shop Share (50%):', shopShare)
+        console.log('Clients:', clientsSet.size)
+        console.log('========================')
         setEarnings({ totalService, barberShare, shopShare, clients: clientsSet.size })
       } catch (err) {
         console.error('Failed to compute earnings', err)
