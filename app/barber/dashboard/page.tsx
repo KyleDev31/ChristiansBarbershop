@@ -789,7 +789,7 @@ export default function BarberDashboard() {
 
             <div className="bg-white rounded-lg border p-6 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-medium">History</h3>
+                <h3 className="text-lg font-medium"> Booking History</h3>
                 <div className="flex items-center gap-2">
                   <label className="text-sm text-muted-foreground">Sort</label>
                   <select

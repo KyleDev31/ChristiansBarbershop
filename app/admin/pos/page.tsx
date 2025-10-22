@@ -307,45 +307,13 @@ export default function POSPage() {
         }
       }
       // Attempt to auto-detect barber from appointment and set selectedBarber
-      // Only set if admin hasn't manually selected a barber yet
-      const normalizeBarberValue = (n: string) => n.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
+      // Set the barber name directly without normalization
       try {
-        if (!selectedBarber) {
-          if (a.barber) {
-            const barberName = typeof a.barber === 'string' ? a.barber : (a.barber.name || a.barber.displayName || a.barber.fullName || '')
-            if (barberName) setSelectedBarber(normalizeBarberValue(barberName))
-          } else if (a.barberName) {
-            setSelectedBarber(normalizeBarberValue(a.barberName))
-          } else if (a.barberEmail || a.email) {
-            const lookupEmail = a.barberEmail || a.email
-            ;(async () => {
-              try {
-                const q = query(collection(db, 'users'), where('email', '==', lookupEmail))
-                const snaps = await getDocs(q)
-                if (!snaps.empty) {
-                  const u = snaps.docs[0].data()
-                  const name = u.displayName || u.fullName || u.name || u.email || ''
-                  if (name) setSelectedBarber(normalizeBarberValue(name))
-                }
-              } catch (e) {
-                // ignore lookup errors
-              }
-            })()
-          } else if (a.barberId) {
-            ;(async () => {
-              try {
-                const q = query(collection(db, 'users'), where('barberId', '==', a.barberId))
-                const snaps = await getDocs(q)
-                if (!snaps.empty) {
-                  const u = snaps.docs[0].data()
-                  const name = u.displayName || u.fullName || u.name || u.email || ''
-                  if (name) setSelectedBarber(normalizeBarberValue(name))
-                }
-              } catch (e) {
-                // ignore
-              }
-            })()
-          }
+        if (a.barber) {
+          const barberName = typeof a.barber === 'string' ? a.barber : (a.barber.name || a.barber.displayName || a.barber.fullName || '')
+          if (barberName) setSelectedBarber(barberName)
+        } else if (a.barberName) {
+          setSelectedBarber(a.barberName)
         }
       } catch (e) {
         // ignore any errors during barber detection
@@ -525,6 +493,9 @@ export default function POSPage() {
       setIsReceiptDialogOpen(true)
       setReceiptData(receipt)
       setCashAmount("")
+      // Clear the cart after successful payment
+      setCart([])
+      setSelectedBarber("")
       // Mark any finished appointments that were added to this cart as recorded
       if (addedFinishedAppointmentIds.length > 0) {
         for (const id of addedFinishedAppointmentIds) {
@@ -666,6 +637,21 @@ export default function POSPage() {
             <TabsTrigger value="products">Products</TabsTrigger>
           </TabsList>
         </Tabs>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setFinishedOpen(true)}
+            className="relative"
+          >
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Finished Services
+            {finishedCount > 0 && (
+              <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+                {finishedCount}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* Services and Products Grid */}
@@ -716,11 +702,55 @@ export default function POSPage() {
         ) : (
           <div className="space-y-2">
             {cart.map((item, index) => (
-              <div key={index} className="flex justify-between items-center">
-                <div>
-                  {item.name} × {item.quantity}
+              <div key={index} className="flex justify-between items-center gap-2 p-2 bg-background rounded">
+                <div className="flex-1">
+                  <div className="font-medium">{item.name}</div>
+                  <div className="text-sm text-muted-foreground">{formatCurrency(item.price)} each</div>
                 </div>
-                <div className="font-bold">{formatCurrency(item.price * item.quantity)}</div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      setCart(cart.map((cartItem, i) => 
+                        i === index && cartItem.quantity > 1
+                          ? { ...cartItem, quantity: cartItem.quantity - 1 }
+                          : cartItem
+                      ))
+                    }}
+                    disabled={item.quantity <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="w-8 text-center font-semibold">{item.quantity}</span>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      setCart(cart.map((cartItem, i) => 
+                        i === index
+                          ? { ...cartItem, quantity: cartItem.quantity + 1 }
+                          : cartItem
+                      ))
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="destructive"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      setCart(cart.filter((_, i) => i !== index))
+                      toast({ title: "Removed from cart", description: `${item.name} has been removed.` })
+                    }}
+                  >
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="font-bold w-24 text-right">{formatCurrency(item.price * item.quantity)}</div>
               </div>
             ))}
             <Separator className="my-2" />
@@ -735,11 +765,12 @@ export default function POSPage() {
       {/* Action Buttons */}
       <div className="mt-4 flex gap-4">
         <Button
-          onClick={() => setIsCustomerDialogOpen(true)}
-          className="flex-1"
-          variant={customer ? "default" : "outline"}
+          onClick={() => confirmClearCart()}
+          variant="outline"
+          disabled={cart.length === 0}
         >
-          {customer ? `Customer: ${customer.name}` : "Select Customer"}
+          <Trash className="mr-2 h-4 w-4" />
+          Clear Cart
         </Button>
         <Button
           onClick={() => setIsPaymentDialogOpen(true)}
@@ -1000,102 +1031,86 @@ export default function POSPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Special Request Dialog */}
-      <Dialog open={isSpecialRequestDialogOpen} onOpenChange={setIsSpecialRequestDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Add Special Request</DialogTitle>
-            <DialogDescription>
-              Add any special requests or custom services for the client.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="special-request">Special Request</Label>
-              <Input
-                id="special-request"
-                placeholder="Enter special request details..."
-                value={specialRequest}
-                onChange={(e) => setSpecialRequest(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="special-price">Additional Price (₱)</Label>
-              <Input
-                id="special-price"
-                type="number"
-                placeholder="Enter additional price..."
-                value={specialRequestPrice}
-                onChange={(e) => setSpecialRequestPrice(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSpecialRequestDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={addSpecialRequest} disabled={!specialRequest.trim()}>
-              Add Request
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+    
 
-      {/* Service Management Dialog */}
-      <Dialog open={isServiceDialogOpen} onOpenChange={setIsServiceDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+      {/* Finished Services Dialog */}
+      <Dialog open={finishedOpen} onOpenChange={setFinishedOpen}>
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>{editingService?.id ? "Edit Service" : "Add New Service"}</DialogTitle>
+            <DialogTitle>Finished Services</DialogTitle>
             <DialogDescription>
-              {editingService?.id ? "Modify the service details below." : "Enter the details for the new service."}
+              Services completed by barbers that can be added to the current transaction.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="service-name">Service Name</Label>
-              <Input
-                id="service-name"
-                value={editingService?.name || ""}
-                onChange={(e) => setEditingService(prev => prev ? { ...prev, name: e.target.value } : null)}
-                placeholder="Enter service name..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="service-price">Price (₱)</Label>
-              <Input
-                id="service-price"
-                type="number"
-                value={editingService?.price || ""}
-                onChange={(e) => setEditingService(prev => prev ? { ...prev, price: Number(e.target.value) } : null)}
-                placeholder="Enter service price..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="service-category">Category</Label>
-              <Select
-                value={editingService?.category || "haircut"}
-                onValueChange={(value) => setEditingService(prev => prev ? { ...prev, category: value } : null)}
-              >
-                <SelectTrigger id="service-category">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="haircut">Haircut</SelectItem>
-                  <SelectItem value="beard">Beard</SelectItem>
-                  <SelectItem value="combo">Combo</SelectItem>
-                  <SelectItem value="color">Color</SelectItem>
-                  <SelectItem value="facial">Facial</SelectItem>
-                  <SelectItem value="addon">Add-on</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="py-4 max-h-[400px] overflow-y-auto">
+            {finishedAppointments.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No finished services available.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {finishedAppointments.map((appt: any) => {
+                  const barberName = typeof appt.barber === 'string' 
+                    ? appt.barber 
+                    : (appt.barber?.name || appt.barber?.displayName || appt.barber?.fullName || 'Unknown')
+                  const customerName = typeof appt.customer === 'string'
+                    ? appt.customer
+                    : (appt.customer?.name || appt.customer?.displayName || appt.customer?.fullName || 'From Booking')
+                  
+                  // Get services from items array or services field
+                  const servicesList = appt.items 
+                    ? appt.items.map((item: any) => item.name || item.serviceName || 'Service').join(', ')
+                    : (appt.services?.map((s: any) => s.name || s).join(', ') || appt.serviceName || appt.service || 'N/A')
+                  
+                  // Get date from completedAt or date field
+                  const appointmentDate = appt.completedAt?.toDate?.() 
+                    ? appt.completedAt.toDate()
+                    : (appt.date?.toDate?.() ? appt.date.toDate() : (appt.date?.seconds ? new Date(appt.date.seconds * 1000) : null))
+                  
+                  return (
+                    <Card key={appt.id}>
+                      <CardContent className="pt-4">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="font-semibold">{customerName}</div>
+                            <div className="text-sm text-muted-foreground">
+                              Barber: {barberName}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Services: {servicesList}
+                            </div>
+                            {appointmentDate && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {appointmentDate.toLocaleString()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => confirmLoadFinishedToCart(appt)}
+                            >
+                              Add to Cart
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => confirmMarkRecorded(appt.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsServiceDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleServiceSubmit} disabled={!editingService?.name || !editingService?.price}>
-              {editingService?.id ? "Save Changes" : "Add Service"}
+            <Button variant="outline" onClick={() => setFinishedOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
