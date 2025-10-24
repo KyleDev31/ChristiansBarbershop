@@ -840,7 +840,7 @@ export default function ReportsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Average Service Value</CardTitle>
-                <CardDescription>Per appointment</CardDescription>
+                <CardDescription>Per service</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">₱{(serviceRevenue / Math.max(1, totalAvailedServices)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -860,7 +860,7 @@ export default function ReportsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {serviceData.length > 0
-                    ? `${serviceData.reduce((prev, current) => (prev.value > current.value ? prev : current)).value} appointments`
+                    ? `${serviceData.reduce((prev, current) => (prev.value > current.value ? prev : current)).value} services`
                     : "No data"}
                 </p>
               </CardContent>
@@ -909,7 +909,7 @@ export default function ReportsPage() {
                     <div key={index} className="space-y-2">
                       <div className="flex justify-between">
                         <span className="font-medium">{service.name}</span>
-                        <span>{service.value} appointments</span>
+                        <span>{service.value} services</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2.5">
                         <div
