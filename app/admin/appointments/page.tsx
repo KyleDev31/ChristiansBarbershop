@@ -42,39 +42,10 @@ export default function AdminAppointmentsPage() {
         const appointmentsRef = collection(db, "appointments")
         let results: any[] = []
 
-        if (view === 'day') {
-          const windowStart = Timestamp.fromDate(startOfDay(addDays(selectedDate, -1)))
-          const windowEnd = Timestamp.fromDate(endOfDay(addDays(selectedDate, 1)))
-          const qts = query(appointmentsRef, where("scheduledAt", ">=", windowStart), where("scheduledAt", "<=", windowEnd))
-          const snapTs = await getDocs(qts)
-          results = snapTs.docs.map(d => ({ id: d.id, ...d.data() }))
-
-          const dateStr = format(selectedDate, "MMMM d, yyyy")
-          const qstr = query(appointmentsRef, where("date", "==", dateStr))
-          const snapStr = await getDocs(qstr)
-          const stringResults = snapStr.docs.map(d => ({ id: d.id, ...d.data() }))
-
-          const byId = new Map<string, any>()
-          results.concat(stringResults).forEach(r => byId.set(r.id, r))
-          results = Array.from(byId.values())
-        } else {
-          const weekDates = getWeekDates(selectedDate)
-          const weekStart = startOfDay(addDays(weekDates[0], -1))
-          const weekEnd = endOfDay(addDays(weekDates[6], 1))
-
-          const qts = query(appointmentsRef, where("scheduledAt", ">=", Timestamp.fromDate(weekStart)), where("scheduledAt", "<=", Timestamp.fromDate(weekEnd)))
-          const snapTs = await getDocs(qts)
-          results = snapTs.docs.map(d => ({ id: d.id, ...d.data() }))
-
-          const datesToFetch = weekDates.map(d => format(d, "MMMM d, yyyy"))
-          const qstr = query(appointmentsRef, where("date", "in", datesToFetch))
-          const snapStr = await getDocs(qstr)
-          const stringResults = snapStr.docs.map(d => ({ id: d.id, ...d.data() }))
-
-          const byId = new Map<string, any>()
-          results.concat(stringResults).forEach(r => byId.set(r.id, r))
-          results = Array.from(byId.values())
-        }
+        // Fetch ALL appointments first, then filter client-side
+        const allSnap = await getDocs(appointmentsRef)
+        results = allSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        
 
         const normalized = results.map((r) => {
           const scheduled: any = r.scheduledAt
@@ -83,22 +54,15 @@ export default function AdminAppointmentsPage() {
           try {
             if (!dateVal && scheduled && scheduled.toDate) dateVal = format(scheduled.toDate(), "MMMM d, yyyy")
             if (!timeVal && scheduled && scheduled.toDate) timeVal = format(scheduled.toDate(), "h:mm a")
-          } catch (e) {}
+          } catch (e) {
+            console.error('Error normalizing appointment:', e, r)
+          }
           return { ...r, date: dateVal, time: timeVal }
         })
-
-        const filtered = normalized.filter((r) => {
-          // Remove cancelled appointments so slots open for others
-          if (r.status === 'cancelled') return false
-
-          const d = r.scheduledAt && r.scheduledAt.toDate ? r.scheduledAt.toDate() : (r.date ? parse(r.date, 'MMMM d, yyyy', new Date()) : null)
-          if (!d) return true
-          if (view === 'day') return d.getFullYear() === selectedDate.getFullYear() && d.getMonth() === selectedDate.getMonth() && d.getDate() === selectedDate.getDate()
-          return getWeekDates(selectedDate).some(wd => wd.getFullYear() === d.getFullYear() && wd.getMonth() === d.getMonth() && wd.getDate() === d.getDate())
-        })
+        
 
         if (!mounted) return
-        setAppointments(filtered)
+        setAppointments(normalized)
       } catch (err) {
         console.error('fetchAppointments error', err)
       } finally {
@@ -137,13 +101,14 @@ export default function AdminAppointmentsPage() {
 
   const appointmentsByDateTime: Record<string, Record<string, any[]>> = {}
   appointments.forEach(appt => {
-    const dateKey = normalizeDateKey(appt.date)
-    const timeKey = normalizeTimeKey(appt.time)
-    if (!dateKey || !timeKey) return
+    const dateKey = normalizeDateKey(appt.date) || 'No Date'
+    const timeKey = normalizeTimeKey(appt.time) || 'No Time'
+    
     if (!appointmentsByDateTime[dateKey]) appointmentsByDateTime[dateKey] = {}
     if (!appointmentsByDateTime[dateKey][timeKey]) appointmentsByDateTime[dateKey][timeKey] = []
     appointmentsByDateTime[dateKey][timeKey].push(appt)
   })
+  
 
   const weekDates = getWeekDates(selectedDate)
 
@@ -239,7 +204,7 @@ export default function AdminAppointmentsPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-3 sm:p-4">
+<div className="bg-white rounded-lg shadow p-3 sm:p-4">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />

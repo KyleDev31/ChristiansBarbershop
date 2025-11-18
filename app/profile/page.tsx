@@ -14,6 +14,7 @@ import { collection, doc, getDoc, query, where, getDocs, orderBy, Timestamp, upd
 import { db } from "@/lib/firebase"
 import { onAuthStateChanged, getAuth } from "firebase/auth"
 import { toast } from "@/hooks/use-toast"
+import AuthGuard from "@/components/AuthGuard"
 // switched profile image upload to local API instead of Firebase Storage
 
 interface Appointment {
@@ -226,7 +227,8 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="container py-10 ml-4">
+    <AuthGuard>
+      <div className="container py-10 ml-4">
         <div className="sticky top-0 z-50 bg-white bg-opacity-30 backdrop-blur-md rounded-lg mb-6">
               <SiteHeader />
         </div>
@@ -536,6 +538,7 @@ export default function ProfilePage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AuthGuard>
   )
 }

@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Clock, Scissors, SprayCanIcon as Spray, CombineIcon as Comb, Zap, Sparkles, Crown, Star } from "lucide-react"
 import { SiteHeader } from "@/components/site-header"
+import AuthGuard from "@/components/AuthGuard"
 
 // Firestore imports
 import { db } from "@/lib/firebase"
@@ -64,65 +65,67 @@ export default function ServicesPage() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <SiteHeader />
-      <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8 max-w-7xl">
-        <div className="text-center mb-8 sm:mb-12">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3 sm:mb-4 text-gray-900">Our Services</h1>
-          <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto">
-            Professional barbering services tailored to your style and needs
-          </p>
-        </div>
-
-        <Tabs defaultValue="haircut" className="w-full">
-          <div className="flex justify-center mb-6 sm:mb-10">
-            <div className="w-full max-w-3xl">
-              {/* Make tabs horizontally scrollable on small screens */}
-              <div className="overflow-x-auto -mx-4 sm:mx-0">
-                <TabsList className="inline-flex gap-2 px-4 sm:px-0 bg-white shadow-sm rounded-lg">
-                  {CATEGORY_TABS.map(tab => (
-                    <TabsTrigger key={tab.value} value={tab.value} className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 font-medium">{tab.label}</TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-            </div>
+    <AuthGuard>
+      <div className="min-h-screen bg-gray-50">
+        <SiteHeader />
+        <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8 max-w-7xl">
+          <div className="text-center mb-8 sm:mb-12">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight mb-3 sm:mb-4 text-gray-900">Our Services</h1>
+            <p className="text-base sm:text-lg text-gray-600 max-w-3xl mx-auto">
+              Professional barbering services tailored to your style and needs
+            </p>
           </div>
 
-          {CATEGORY_TABS.map(tab => (
-            <TabsContent key={tab.value} value={tab.value} className="mt-0">
-              {loading ? (
-                <div className="text-center py-10 text-muted-foreground">Loading...</div>
-              ) : (
-                <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 justify-items-center">
-                  {(grouped[tab.value] || []).length > 0 ? (
-                    grouped[tab.value].map(service => (
-                      <ServiceCard key={service.id} service={service} />
-                    ))
-                  ) : (
-                    <div className="col-span-full text-center text-gray-500 py-12">
-                      <div className="text-5xl sm:text-6xl mb-4">✂️</div>
-                      <p className="text-base sm:text-lg">No services found in this category.</p>
-                    </div>
-                  )}
+          <Tabs defaultValue="haircut" className="w-full">
+            <div className="flex justify-center mb-6 sm:mb-10">
+              <div className="w-full max-w-3xl">
+                {/* Make tabs horizontally scrollable on small screens */}
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <TabsList className="inline-flex gap-2 px-4 sm:px-0 bg-white shadow-sm rounded-lg">
+                    {CATEGORY_TABS.map(tab => (
+                      <TabsTrigger key={tab.value} value={tab.value} className="whitespace-nowrap px-4 py-2 sm:px-6 sm:py-3 font-medium">{tab.label}</TabsTrigger>
+                    ))}
+                  </TabsList>
                 </div>
-              )}
-            </TabsContent>
-          ))}
-        </Tabs>
+              </div>
+            </div>
 
-        <div className="mt-12 sm:mt-20 text-center bg-white rounded-2xl p-6 sm:p-8 shadow-sm border">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 sm:mb-4 text-gray-900">Ready for a fresh look?</h2>
-          <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 max-w-2xl mx-auto">
-            Book your appointment today and experience the best barbering service in town.
-          </p>
-          <div className="flex justify-center">
-            <Button asChild size="lg" className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 sm:px-8 py-2 sm:py-3 text-sm sm:text-lg font-semibold rounded-md">
-              <Link href="/booking">Book an Appointment</Link>
-            </Button>
+            {CATEGORY_TABS.map(tab => (
+              <TabsContent key={tab.value} value={tab.value} className="mt-0">
+                {loading ? (
+                  <div className="text-center py-10 text-muted-foreground">Loading...</div>
+                ) : (
+                  <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 justify-items-center">
+                    {(grouped[tab.value] || []).length > 0 ? (
+                      grouped[tab.value].map(service => (
+                        <ServiceCard key={service.id} service={service} />
+                      ))
+                    ) : (
+                      <div className="col-span-full text-center text-gray-500 py-12">
+                        <div className="text-5xl sm:text-6xl mb-4">✂️</div>
+                        <p className="text-base sm:text-lg">No services found in this category.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            ))}
+          </Tabs>
+
+          <div className="mt-12 sm:mt-20 text-center bg-white rounded-2xl p-6 sm:p-8 shadow-sm border">
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mb-3 sm:mb-4 text-gray-900">Ready for a fresh look?</h2>
+            <p className="text-sm sm:text-base text-gray-600 mb-6 sm:mb-8 max-w-2xl mx-auto">
+              Book your appointment today and experience the best barbering service in town.
+            </p>
+            <div className="flex justify-center">
+              <Button asChild size="lg" className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 sm:px-8 py-2 sm:py-3 text-sm sm:text-lg font-semibold rounded-md">
+                <Link href="/booking">Book an Appointment</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AuthGuard>
   )
 }
 

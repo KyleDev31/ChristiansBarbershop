@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet, CalendarIcon } from "lucide-react"
+import { Calculator, CreditCard, Minus, Plus, Receipt, Search, ShoppingCart, Trash, User, X, Loader2, MessageSquare, Settings, Edit, PlusCircle, FileSpreadsheet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,10 +18,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
-import { format } from "date-fns"
 import { saveAs } from 'file-saver'
 import { db } from "@/lib/firebase"
 import { addDoc, collection, query, where, onSnapshot, doc, updateDoc, getDocs } from "firebase/firestore"
@@ -204,13 +200,6 @@ export default function POSPage() {
   const [cashAmount, setCashAmount] = useState("")
   const [cashError, setCashError] = useState("")
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const [transactionDate, setTransactionDate] = useState<Date>(new Date())
-  const [transactionTime, setTransactionTime] = useState<string>(() => {
-    const now = new Date()
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-  })
-  const [transactionDateTime, setTransactionDateTime] = useState<string>(() => new Date().toISOString().slice(0,16)) // datetime-local value
-  const [dateError, setDateError] = useState<string>("")
   const [selectedBarber, setSelectedBarber] = useState("")
   const [barberError, setBarberError] = useState("")
   const [finishedOpen, setFinishedOpen] = useState(false)
@@ -415,24 +404,9 @@ export default function POSPage() {
     setIsProcessingPayment(true)
 
     try {
-     // validate selected transaction datetime
-     // Combine date and time into a single Date object
-     const [hours, minutes] = transactionTime.split(':').map(Number)
-     const chosenDate = new Date(transactionDate)
-     chosenDate.setHours(hours, minutes, 0, 0)
-     
-     if (isNaN(chosenDate.getTime())) {
-       setDateError("Please select a valid date/time.")
-       setIsProcessingPayment(false)
-       return
-     }
-     const now = new Date()
-     if (chosenDate.getTime() > now.getTime()) {
-       setDateError("Transaction date cannot be in the future.")
-       setIsProcessingPayment(false)
-       return
-     }
-     setDateError("")
+      // Use current date/time for transaction
+      const chosenDate = new Date()
+      
       // Check if cart contains only products (no services)
       const hasServices = cart.some(item => item.type === "services")
       
@@ -786,11 +760,6 @@ export default function POSPage() {
         setIsPaymentDialogOpen(open); 
         if (!open) {
           setCashAmount("");
-          const now = new Date()
-          setTransactionDate(now);
-          setTransactionTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
-          setTransactionDateTime(now.toISOString().slice(0,16));
-          setDateError("");
         }
       }}>
         <DialogContent className="sm:max-w-[425px]">
@@ -812,53 +781,8 @@ export default function POSPage() {
                 </div>
               </div>
 
-             {/* Transaction date/time picker */}
-             <div className="space-y-2">
-               <Label>Transaction Date & Time</Label>
-               <div className="flex gap-2">
-                 <Popover>
-                   <PopoverTrigger asChild>
-                     <Button
-                       variant="outline"
-                       className={cn(
-                         "flex-1 justify-start text-left font-normal",
-                         !transactionDate && "text-muted-foreground"
-                       )}
-                     >
-                       <CalendarIcon className="mr-2 h-4 w-4" />
-                       {transactionDate ? format(transactionDate, "PPP") : <span>Pick a date</span>}
-                     </Button>
-                   </PopoverTrigger>
-                   <PopoverContent className="w-auto p-0" align="start">
-                     <Calendar
-                       mode="single"
-                       selected={transactionDate}
-                       onSelect={(date) => {
-                         if (date) {
-                           setTransactionDate(date)
-                           setDateError("")
-                         }
-                       }}
-                       disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
-                       initialFocus
-                     />
-                   </PopoverContent>
-                 </Popover>
-                 <Input
-                   type="time"
-                   value={transactionTime}
-                   onChange={(e) => {
-                     setTransactionTime(e.target.value)
-                     setDateError("")
-                   }}
-                   className="w-32"
-                 />
-               </div>
-               {dateError && <div className="text-red-600 text-sm">{dateError}</div>}
-             </div>
-
               {/* Barber Selection - Only show if cart contains services */}
-              {cart.some(item => item.type === "services") && (
+              {cart.some(item => item.type === "services") ? (
                 <div className="space-y-2">
                   <Label htmlFor="barber-select">Select Barber</Label>
                   <Select
@@ -876,7 +800,7 @@ export default function POSPage() {
                   </Select>
                   {barberError && <div className="text-red-600 text-sm">{barberError}</div>}
                 </div>
-              )}
+              ) : null}
 
               {/* Payment Method */}
               <div className="space-y-2">

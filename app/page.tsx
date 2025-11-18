@@ -18,10 +18,9 @@ export async function getRecentFeedbacks(limitCount: number = 3): Promise<Feedba
     const querySnapshot = await getDocs(q)
     
     const items = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Feedback[]
-
+      id: doc.id,     
+      ...doc.data(),                             
+    })) as Feedback[]                       
     // Server-side diagnostic logging to help debug stale/missing data
     try {
       // eslint-disable-next-line no-console
@@ -274,7 +273,7 @@ export default function HomePage() {
             </div>
             <div className="flex justify-center gap-4">
               <Button asChild size="sm" variant="outline">
-                <a href="https://maps.app.goo.gl/gSPtyUGmvJB7r4cYA" target="_blank" rel="noopener noreferrer">
+                <a href="https://maps.app.goo.gl/32TpzuDFdjaknYhq9" target="_blank" rel="noopener noreferrer">
                   Get Directions
                 </a>
               </Button>
