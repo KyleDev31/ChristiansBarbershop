@@ -647,11 +647,9 @@ export default function POSPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xl font-bold">{formatCurrency(item.price)}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {item.type === "services" ? `${'duration' in item ? item.duration : 0} mins` : `Stock: ${'stock' in item ? item.stock : 0}`}
+                  <div className="text-sm text-muted-foreground">     
                   </div>
                 </div>
-                <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded-md" />
               </div>
             </CardContent>
             <CardFooter>

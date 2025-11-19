@@ -1041,7 +1041,6 @@ export default function ReportsPage() {
               <CardContent>
                 <div className="text-3xl font-bold">{completedAppointments}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalAppointments > 0 ? `${((completedAppointments / totalAppointments) * 100).toFixed(1)}% completion` : "—"}
                 </p>
               </CardContent>
             </Card>
@@ -1054,7 +1053,6 @@ export default function ReportsPage() {
               <CardContent>
                 <div className="text-3xl font-bold">{cancelledAppointments}</div>
                 <p className="text-xs text-muted-foreground">
-                  {totalAppointments > 0 ? `${((cancelledAppointments / totalAppointments) * 100).toFixed(1)}% cancelled` : "—"}
                 </p>
               </CardContent>
             </Card>
